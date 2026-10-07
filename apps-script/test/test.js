@@ -327,7 +327,7 @@ const tests = {
     api('saveKeys', { provider: 'gemini', aiKey: 'AIza-test' });
     assert.strictEqual(env.props.GEMINI_API_KEY, 'AIza-test'); assert.strictEqual(env.props.ANTHROPIC_API_KEY, '');
     let st = api('status');
-    assert.strictEqual(st.ai.provider, 'gemini'); assert.strictEqual(st.keys.ai, true); assert.strictEqual(st.ai.model, 'gemini-2.5-flash');
+    assert.strictEqual(st.ai.provider, 'gemini'); assert.strictEqual(st.keys.ai, true); assert.strictEqual(st.ai.model, 'gemini-flash-latest');
     const calls = [];
     const answers = [
       { choices: [{ message: { content: null, tool_calls: [{ id: 'c1', type: 'function',

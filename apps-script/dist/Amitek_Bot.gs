@@ -232,7 +232,8 @@ function doPost(e) {
 
 function doGet(e) {
   var p = (e && e.parameter) || {};
-  if (p['hub.challenge']) return ContentService.createTextOutput(p['hub.challenge']);  // webhook verification
+  var ch = p['hub.challenge'] || p.challange || p.challenge;  // webhook verification (BlueTick: ?echo=true&challange=…)
+  if (ch) return ContentService.createTextOutput(ch);
   return appPage_();  // the phone app (App.gs)
 }
 
@@ -472,7 +473,7 @@ function callClaude_(system, messages) {
  * answer are translated to and from the Claude format used everywhere else in this script.
  */
 var AI_PROVIDERS = {
-  gemini: { name: 'Google Gemini', key: 'GEMINI_API_KEY', model: 'gemini-2.5-flash',
+  gemini: { name: 'Google Gemini', key: 'GEMINI_API_KEY', model: 'gemini-flash-latest',
             url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions' },
   groq: { name: 'Groq', key: 'GROQ_API_KEY', model: 'llama-3.3-70b-versatile',
           url: 'https://api.groq.com/openai/v1/chat/completions' },
