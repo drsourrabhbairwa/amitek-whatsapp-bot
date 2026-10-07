@@ -1,8 +1,25 @@
 # Amitek WhatsApp Sales Agent
 
-An AI sales head on Amitek's WhatsApp number (+91 89058 34151, via BlueTick). It replies to leads in English,
-Hindi or Hinglish, qualifies them (Discover > Diagnose > Recommend > Quote > Close), keeps the lead sheet updated,
-and hands hot leads to a salesperson on WhatsApp.
+An AI assistant on Amitek's WhatsApp business number (via BlueTick). It replies to leads in English, Hindi or
+Hinglish, keeps every lead tracked so none goes off road, and hands leads to a salesperson on WhatsApp.
+
+## Two editions
+
+| | Google Sheets + Apps Script (**recommended now**) | Python server (scale-up option) |
+|---|---|---|
+| Where | [`apps-script/`](apps-script/) | `app/` |
+| Lead list | a Google Sheet (Leads, Messages, Log, Board tabs) | Postgres + board page |
+| Hosting | none, runs free inside Google | Render or AWS (~US$13/month) |
+| Setup | [`apps-script/SETUP.md`](apps-script/SETUP.md) | see "Deploy" below |
+| Tests | `node apps-script/test/test.js` | `pytest` |
+
+Both editions behave the same: gentle phase-1 replies, STOP/START, Call me, human takeover, hourly alerts,
+9 AM summary and the salesperson's DONE / LATER / WON / LOST / LIST commands.
+
+Nothing secret lives in this repo. Keys and tokens go only into Apps Script **Script Properties** (or the server's
+environment). Lead data, prices and customer numbers stay in the private Google Sheet.
+
+The rest of this page describes the Python edition.
 
 ## How it works
 
