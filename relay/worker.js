@@ -62,8 +62,10 @@ export default {
       // a verification or test call: record it so we can see what the sender expects
       const headers = {};
       request.headers.forEach((v, k) => { if (!/^(cf-|x-forwarded|x-real-ip|cookie|authorization)/i.test(k)) headers[k] = v; });
-      send(JSON.stringify({ _relay_probe: { method: request.method, query: rawQuery.replace(/key=[^&?]*/g, 'key=…'),
-        headers, body: body.slice(0, 4000), answered: challenge || 'ok' } }));
+      const probe = JSON.stringify({ _relay_probe: { method: request.method, query: rawQuery.replace(/key=[^&?]*/g, 'key=…'),
+        headers, body: body.slice(0, 4000), answered: challenge || 'ok' } });
+      console.log(probe);  // visible in Cloudflare: Worker > Logs > Live
+      send(probe);
       if (challenge) return new Response(challenge, { status: 200, headers: { 'Content-Type': 'text/plain' } });
       if (!forward) return new Response('Amitek relay is running', { status: 200 });
       if (request.method === 'POST') {
@@ -73,6 +75,7 @@ export default {
     }
 
     // a real WhatsApp event: answer at once, deliver to Apps Script in the background
+    console.log('event', body.slice(0, 500));
     send(body);
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
