@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b5cab">
+<title>Amitek Leads</title>
+<style>
+  :root {
+    --bg: #f3f5f8; --card: #ffffff; --text: #16202c; --muted: #637083; --line: #e3e7ee;
+    --brand: #0b5cab; --brand-soft: #e5effa; --hot: #d93a2b; --hot-soft: #fde8e6; --due: #b26a00; --due-soft: #fff1d6;
+    --wait: #1d63c9; --wait-soft: #e3edfc; --ok: #13804b; --ok-soft: #dff3e8; --grey-soft: #eef0f3;
+    --head: #0b5cab; --in: #ffffff; --out: #dcf3e3; --outbot: #e7eefb; --shadow: 0 1px 2px rgba(16, 24, 40, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f141b; --card: #18202a; --text: #e7ecf2; --muted: #93a0b2; --line: #273241;
+      --brand: #5aa2ee; --brand-soft: #16304d; --hot: #ff7a6b; --hot-soft: #3d1d1a; --due: #f0b450; --due-soft: #3a2c12;
+      --wait: #78a9f3; --wait-soft: #172a47; --ok: #4fcf8b; --ok-soft: #13301f; --grey-soft: #222b36;
+      --head: #123a63; --in: #1e2833; --out: #1a3a27; --outbot: #1b2a42; --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  .hidden { display: none !important; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--head); color: #fff; padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px; min-height: 54px; }
+  header h1 { font-size: 17px; margin: 0; flex: 1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header button { background: rgba(255,255,255,.15); border: 0; color: #fff; border-radius: 10px; height: 34px; min-width: 34px;
+    padding: 0 10px; cursor: pointer; }
+  main { padding: 12px 16px 96px; max-width: 720px; margin: 0 auto; }
+  nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--line);
+    display: flex; padding-bottom: env(safe-area-inset-bottom); z-index: 6; }
+  nav button { flex: 1; border: 0; background: none; padding: 9px 0 10px; color: var(--muted); font-size: 12px; cursor: pointer; }
+  nav button .i { display: block; font-size: 20px; line-height: 24px; }
+  nav button.on { color: var(--brand); font-weight: 600; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  .tile { background: var(--card); border-radius: 12px; padding: 10px 8px; text-align: center; box-shadow: var(--shadow);
+    border: 1px solid var(--line); cursor: pointer; }
+  .tile b { display: block; font-size: 22px; line-height: 1.1; }
+  .tile span { font-size: 11px; color: var(--muted); }
+  .tile.hot b { color: var(--hot); } .tile.due b { color: var(--due); } .tile.wait b { color: var(--wait); }
+  .botbar { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 12px; margin-bottom: 14px; font-size: 13px; cursor: pointer; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 18px 2px 8px; font-weight: 600; }
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .lead { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; box-shadow: var(--shadow);
+    cursor: pointer; display: flex; gap: 10px; align-items: flex-start; }
+  .lead .main { flex: 1; min-width: 0; }
+  .lead .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lead .sub { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lead .note { font-size: 13px; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .badge { font-size: 11px; font-weight: 600; border-radius: 20px; padding: 2px 8px; white-space: nowrap; background: var(--grey-soft); color: var(--muted); }
+  .b-Hot { background: var(--hot-soft); color: var(--hot); }
+  .b-Overdue { background: var(--due-soft); color: var(--due); }
+  .b-Waiting { background: var(--wait-soft); color: var(--wait); }
+  .b-Won { background: var(--ok-soft); color: var(--ok); }
+  .when { font-size: 12px; color: var(--muted); text-align: right; margin-top: 4px; white-space: nowrap; }
+  .empty { color: var(--muted); text-align: center; padding: 18px 8px; background: var(--card); border-radius: 12px; border: 1px dashed var(--line); font-size: 14px; }
+  .search { display: flex; gap: 8px; margin-bottom: 10px; }
+  input[type=text], input[type=tel], input[type=password], input[type=number], select, textarea {
+    width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); outline: none; }
+  input:focus, select:focus, textarea:focus { border-color: var(--brand); }
+  .chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; scrollbar-width: none; }
+  .chip { border: 1px solid var(--line); background: var(--card); border-radius: 20px; padding: 6px 12px; white-space: nowrap; cursor: pointer; font-size: 13px; }
+  .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .btn { border: 0; border-radius: 10px; padding: 11px 14px; background: var(--brand); color: #fff; font-weight: 600; cursor: pointer; }
+  .btn.soft { background: var(--brand-soft); color: var(--brand); }
+  .btn.ghost { background: var(--card); color: var(--text); border: 1px solid var(--line); }
+  .btn.red { background: var(--hot-soft); color: var(--hot); }
+  .btn.green { background: var(--ok-soft); color: var(--ok); }
+  .btn:disabled { opacity: .5; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; box-shadow: var(--shadow); }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+  .quick a, .quick button { text-decoration: none; text-align: center; font-size: 13px; padding: 10px 4px; }
+  .acts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 4px; }
+  .acts button { padding: 10px 2px; font-size: 13px; }
+  .info { font-size: 13px; color: var(--muted); }
+  .info b { color: var(--text); font-weight: 600; }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); margin: 14px 0 10px; }
+  .tabs button { flex: 1; border: 0; background: none; padding: 10px; color: var(--muted); border-bottom: 2px solid transparent; cursor: pointer; }
+  .tabs button.on { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600; }
+  .chat { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; }
+  .msg { max-width: 84%; padding: 7px 10px 5px; border-radius: 12px; background: var(--in); border: 1px solid var(--line); white-space: pre-wrap; word-wrap: break-word; }
+  .msg.out { align-self: flex-end; background: var(--out); border-color: transparent; }
+  .msg.bot { background: var(--outbot); }
+  .msg .meta { font-size: 11px; color: var(--muted); text-align: right; margin-top: 2px; }
+  .replybar { position: sticky; bottom: 70px; display: flex; gap: 8px; background: var(--bg); padding: 8px 0; }
+  .replybar textarea { min-height: 44px; max-height: 120px; resize: none; }
+  .notice { font-size: 13px; padding: 10px 12px; border-radius: 10px; background: var(--due-soft); color: var(--due); margin: 6px 0; }
+  .form label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  .switch { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--line); gap: 12px; }
+  .switch:last-child { border-bottom: 0; }
+  .switch small { display: block; color: var(--muted); font-size: 12px; }
+  .tog { position: relative; width: 48px; height: 28px; flex: none; }
+  .tog input { opacity: 0; width: 0; height: 0; }
+  .tog span { position: absolute; inset: 0; background: var(--line); border-radius: 28px; transition: .2s; cursor: pointer; }
+  .tog span:before { content: ""; position: absolute; width: 22px; height: 22px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  .tog input:checked + span { background: var(--ok); }
+  .tog input:checked + span:before { transform: translateX(20px); }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { flex: 1; border: 0; padding: 9px; background: var(--card); cursor: pointer; }
+  .seg button.on { background: var(--brand); color: #fff; }
+  .log { font-size: 13px; border-bottom: 1px solid var(--line); padding: 8px 0; }
+  .log .t { color: var(--muted); font-size: 12px; }
+  #toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: #16202c; color: #fff; padding: 10px 16px;
+    border-radius: 10px; font-size: 14px; z-index: 20; max-width: calc(100% - 32px); box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+  #toast.err { background: #b3261e; }
+  .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 15; display: flex; align-items: flex-end; }
+  .sheet { background: var(--card); width: 100%; max-width: 720px; margin: 0 auto; border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .sheet h3 { margin: 0 0 10px; font-size: 16px; }
+  .pin { max-width: 320px; margin: 18vh auto 0; text-align: center; padding: 0 16px; }
+  .pin .logo { width: 60px; height: 60px; border-radius: 16px; background: var(--brand); color: #fff; display: grid; place-items: center;
+    font-size: 28px; font-weight: 700; margin: 0 auto 14px; }
+  .pin input { text-align: center; font-size: 22px; letter-spacing: .3em; margin: 16px 0 10px; }
+  .loading { text-align: center; color: var(--muted); padding: 30px 0; }
+</style>
+</head>
+<body>
+
+<div id="pinView" class="pin hidden">
+  <div class="logo">A</div>
+  <div style="font-size:18px;font-weight:600">Amitek Leads</div>
+  <div class="info">Enter your app PIN</div>
+  <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="12">
+  <button class="btn" style="width:100%" onclick="submitPin()">Open</button>
+  <div id="pinErr" class="info" style="color:var(--hot);margin-top:10px"></div>
+</div>
+
+<div id="appView" class="hidden">
+  <header>
+    <button id="backBtn" class="hidden" onclick="goBack()" aria-label="Back">←</button>
+    <h1 id="title">Today</h1>
+    <button onclick="refresh()" aria-label="Refresh">⟳</button>
+  </header>
+  <main id="main"></main>
+  <nav>
+    <button data-tab="today" onclick="showTab('today')"><span class="i">◉</span>Today</button>
+    <button data-tab="leads" onclick="showTab('leads')"><span class="i">☰</span>Leads</button>
+    <button data-tab="add" onclick="showTab('add')"><span class="i">＋</span>Add</button>
+    <button data-tab="settings" onclick="showTab('settings')"><span class="i">⚙</span>Settings</button>
+  </nav>
+</div>
+
+<div id="toast" class="hidden"></div>
+<div id="sheetBg" class="sheet-bg hidden" onclick="if(event.target===this)closeSheet()"><div class="sheet" id="sheet"></div></div>
+
+<script>
+var S = { pin: '', tab: 'today', lead: null, leadTab: 'chat', q: '', status: '', stack: [] };
+var NEED_ORDER = { Hot: 'Hot', Overdue: 'Overdue', 'Waiting reply': 'Waiting' };
+
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function $(id) { return document.getElementById(id); }
+
+function call(action, args) {
+  return new Promise(function (resolve, reject) {
+    google.script.run
+      .withSuccessHandler(function (txt) {
+        var r; try { r = JSON.parse(txt); } catch (e) { return reject(new Error('Bad response')); }
+        if (r && r.error === 'PIN') { lock(r.message); return reject(new Error(r.message)); }
+        if (r && r.error) return reject(new Error(r.error));
+        resolve(r);
+      })
+      .withFailureHandler(function (e) { reject(e instanceof Error ? e : new Error(String(e && e.message || e))); })
+      .api(S.pin, action, JSON.stringify(args || {}));
+  });
+}
+
+function toast(msg, err) {
+  var t = $('toast'); t.textContent = msg; t.className = err ? 'err' : '';
+  clearTimeout(toast.h); toast.h = setTimeout(function () { t.className = 'hidden'; }, err ? 4500 : 2200);
+}
+function fail(e) { toast(e.message || String(e), true); }
+
+function when(iso) {
+  if (!iso) return '';
+  var d = new Date(iso), now = new Date(), diff = d - now, day = 86400000;
+  var t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  var sameDay = d.toDateString() === now.toDateString();
+  var y = new Date(now - day).toDateString() === d.toDateString();
+  var tm = new Date(+now + day).toDateString() === d.toDateString();
+  if (sameDay) return 'Today ' + t;
+  if (y) return 'Yesterday ' + t;
+  if (tm) return 'Tomorrow ' + t;
+  var ds = d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+  return Math.abs(diff) < 6 * day ? d.toLocaleDateString([], { weekday: 'short' }) + ' ' + t : ds;
+}
+
+// ---------------------------------------------------------------- PIN
+function lock(msg) {
+  S.pin = ''; store('amitek_pin', null);
+  $('appView').classList.add('hidden'); $('pinView').classList.remove('hidden');
+  $('pinErr').textContent = msg || ''; $('pinInput').value = ''; $('pinInput').focus();
+}
+function submitPin() {
+  var p = $('pinInput').value.trim(); if (!p) return;
+  S.pin = p; $('pinErr').textContent = '';
+  call('settings').then(function () {
+    store('amitek_pin', p);
+    $('pinView').classList.add('hidden'); $('appView').classList.remove('hidden');
+    showTab('today');
+  }).catch(function (e) { $('pinErr').textContent = e.message; });
+}
+$('pinInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitPin(); });
+
+// ---------------------------------------------------------------- navigation
+function setHeader(title, back) {
+  $('title').textContent = title; $('backBtn').classList.toggle('hidden', !back);
+  document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === S.tab); });
+}
+function showTab(tab) { S.tab = tab; S.lead = null; S.stack = []; render(); window.scrollTo(0, 0); }
+function goBack() { S.lead = null; render(); }
+function refresh() { if (S.lead) openLead(S.lead.card.phone, true); else render(); }
+function loading() { $('main').innerHTML = '<div class="loading">Loading…</div>'; }
+
+function render() {
+  if (S.tab === 'today') return renderToday();
+  if (S.tab === 'leads') return renderLeads();
+  if (S.tab === 'add') return renderAdd();
+  if (S.tab === 'settings') return renderSettings();
+}
+
+function leadRow(c) {
+  var cls = 'b-' + (NEED_ORDER[c.need] || c.need);
+  var sub = [c.category !== 'Other' ? c.category : '', c.city, '+' + c.phone].filter(Boolean).join(' · ');
+  var right = c.need === 'Waiting reply' ? when(c.lastIn) : when(c.next);
+  return '<div class="lead" onclick="openLead(\'' + esc(c.phone) + '\')"><div class="main">' +
+    '<div class="name">' + esc(c.name) + '</div><div class="sub">' + esc(sub) + '</div>' +
+    (c.note ? '<div class="note">' + esc(c.note) + '</div>' : '') + '</div>' +
+    '<div><span class="badge ' + cls + '">' + esc(c.need === 'Active' || c.need === 'Scheduled' ? c.status : c.need) + '</span>' +
+    (right ? '<div class="when">' + esc(right) + '</div>' : '') + '</div></div>';
+}
+function listOf(rows, emptyText) {
+  return rows.length ? '<div class="list">' + rows.map(leadRow).join('') + '</div>' : '<div class="empty">' + esc(emptyText) + '</div>';
+}
+
+function botBar(b) {
+  var color = !b.sendEnabled ? 'var(--due)' : !b.botEnabled ? 'var(--muted)' : 'var(--ok)';
+  var text = !b.sendEnabled ? 'Test mode: nothing is sent on WhatsApp' : !b.botEnabled ? 'Bot is off: the team replies' :
+             'Bot is live (' + (b.mode === 'sales' ? 'sales mode' : 'gentle replies') + ')';
+  return '<div class="botbar" onclick="showTab(\'settings\')"><span class="dot" style="background:' + color + '"></span>' +
+         '<span style="flex:1">' + esc(text) + '</span><span class="info">Change ›</span></div>';
+}
+
+// ---------------------------------------------------------------- Today
+function renderToday() {
+  setHeader('Today', false); loading();
+  call('dashboard').then(function (d) {
+    if (S.tab !== 'today' || S.lead) return;
+    var c = d.counts;
+    $('main').innerHTML = botBar(d.bot) +
+      '<div class="tiles">' +
+      '<div class="tile hot" onclick="jump(\'hot\')"><b>' + c.hot + '</b><span>Hot</span></div>' +
+      '<div class="tile due" onclick="jump(\'overdue\')"><b>' + c.overdue + '</b><span>Overdue</span></div>' +
+      '<div class="tile wait" onclick="jump(\'waiting\')"><b>' + c.waiting + '</b><span>Waiting</span></div>' +
+      '<div class="tile" onclick="showTab(\'leads\')"><b>' + c.active + '</b><span>Active</span></div></div>' +
+      '<div class="info" style="margin:0 2px">' + c.wrote7d + ' wrote this week · ' + c.won + ' won · ' + c.total + ' leads in total</div>' +
+      '<h2 id="sec-hot">🔥 Hot, call first</h2>' + listOf(d.hot, 'No hot leads right now') +
+      '<h2 id="sec-overdue">⏰ Follow-up due</h2>' + listOf(d.overdue, 'Nothing overdue 👍') +
+      '<h2 id="sec-waiting">💬 Waiting for a reply</h2>' + listOf(d.waiting, 'Nobody is waiting') +
+      '<h2>📅 Coming up</h2>' + listOf(d.scheduled, 'No follow-ups scheduled');
+  }).catch(fail);
+}
+function jump(id) { var el = $('sec-' + id); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
+
+// ---------------------------------------------------------------- Leads
+var STATUSES = ['', 'Hot', 'Replied', 'Qualified', 'Contacted', 'New', 'Won', 'Lost', 'Opted out'];
+function renderLeads() {
+  setHeader('Leads', false);
+  $('main').innerHTML = '<div class="search"><input id="q" type="text" placeholder="Search name, number, city…" value="' + esc(S.q) + '"></div>' +
+    '<div class="chips">' + STATUSES.map(function (s) {
+      return '<button class="chip' + (S.status === s ? ' on' : '') + '" onclick="setStatus(\'' + s + '\')">' + (s || 'All') + '</button>';
+    }).join('') + '</div><div id="results"><div class="loading">Loading…</div></div>';
+  var q = $('q');
+  q.addEventListener('input', function () { clearTimeout(renderLeads.h); renderLeads.h = setTimeout(function () { S.q = q.value; search(); }, 350); });
+  search();
+}
+function setStatus(s) { S.status = s; renderLeads(); }
+function search() {
+  var q = S.q, st = S.status;
+  call('search', { q: q, status: st }).then(function (r) {
+    if (S.tab !== 'leads' || S.lead || q !== S.q || st !== S.status) return;
+    $('results').innerHTML = '<div class="info" style="margin:0 2px 8px">' + r.total + ' leads' + (r.total > r.leads.length ? ', showing ' + r.leads.length : '') + '</div>' +
+      listOf(r.leads, 'No leads found');
+  }).catch(fail);
+}
+
+// ---------------------------------------------------------------- Lead detail
+function openLead(phone, keepTab) {
+  if (!keepTab) S.leadTab = 'chat';
+  S.lead = S.lead && S.lead.card.phone === phone ? S.lead : { card: { phone: phone, name: '' } };
+  setHeader('Lead', true); loading(); window.scrollTo(0, 0);
+  call('lead', { phone: phone }).then(function (d) { if (!S.lead) return; S.lead = d; renderLead(); }).catch(fail);
+}
+
+function renderLead() {
+  var d = S.lead, l = d.lead, c = d.card;
+  setHeader(c.name, true);
+  var info = [['Status', l['Status']], ['Category', l['Category']], ['City', l['City']], ['Next follow-up', c.next ? when(c.next) : '—']];
+  var html = '<div class="card"><div style="display:flex;gap:8px;align-items:center"><div style="flex:1;min-width:0">' +
+    '<div style="font-weight:700;font-size:17px">' + esc(c.name) + '</div>' +
+    '<div class="info">+' + esc(c.phone) + (l['Business'] && l['Business'] !== c.name ? ' · ' + esc(l['Business']) : '') + '</div></div>' +
+    '<span class="badge b-' + esc(NEED_ORDER[c.need] || c.need) + '">' + esc(c.need) + '</span></div>' +
+    '<div class="info" style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:4px 12px">' +
+    info.map(function (x) { return '<div>' + x[0] + ': <b>' + esc(x[1] || '—') + '</b></div>'; }).join('') + '</div>' +
+    (l['Follow-up Note'] ? '<div style="margin-top:8px;font-size:14px">📝 ' + esc(l['Follow-up Note']) + '</div>' : '') +
+    (d.botPaused ? '<div class="notice" style="margin-top:10px">Bot is paused for this lead until ' + esc(when(d.pausedUntil)) + '</div>' : '') +
+    '</div>' +
+    '<div class="quick"><a class="btn soft" href="tel:+' + esc(c.phone) + '">📞 Call</a>' +
+    '<a class="btn soft" href="https://wa.me/' + esc(c.phone) + '" target="_blank">💬 WhatsApp</a>' +
+    (d.botPaused ? '<button class="btn soft" onclick="pauseBot(true)">🤖 Bot on</button>' : '<button class="btn soft" onclick="pauseBot(false)">🤫 Bot off</button>') + '</div>' +
+    '<div class="acts"><button class="btn green" onclick="act(\'DONE\')">✓ Done</button>' +
+    '<button class="btn ghost" onclick="laterSheet()">Later</button>' +
+    '<button class="btn green" onclick="noteSheet(\'WON\')">Won</button>' +
+    '<button class="btn red" onclick="noteSheet(\'LOST\')">Lost</button></div>' +
+    '<div class="tabs">' + ['chat', 'details', 'history'].map(function (t) {
+      return '<button class="' + (S.leadTab === t ? 'on' : '') + '" onclick="leadTab(\'' + t + '\')">' + { chat: 'Chat', details: 'Details', history: 'History' }[t] + '</button>';
+    }).join('') + '</div><div id="leadBody"></div>';
+  $('main').innerHTML = html;
+  renderLeadBody();
+}
+function leadTab(t) { S.leadTab = t; renderLead(); }
+
+function renderLeadBody() {
+  var d = S.lead, el = $('leadBody');
+  if (S.leadTab === 'chat') {
+    var msgs = d.messages.length ? d.messages.map(function (m) {
+      var out = m.dir === 'out';
+      var who = !out ? '' : m.sender === 'bot' ? 'Bot · ' : 'Team · ';
+      return '<div class="msg' + (out ? ' out' : '') + (m.sender === 'bot' ? ' bot' : '') + '">' + esc(m.body) +
+             '<div class="meta">' + esc(who + when(m.time)) + '</div></div>';
+    }).join('') : '<div class="empty">No messages yet</div>';
+    var opted = d.lead['Opt-in'] === 'Opted out';
+    el.innerHTML = '<div class="chat">' + msgs + '</div>' +
+      (opted ? '<div class="notice">This customer said STOP. Do not message them.</div>' :
+       d.canReply ? '<div class="replybar"><textarea id="replyText" rows="1" placeholder="Reply as Amitek team…"></textarea>' +
+                    '<button class="btn" style="flex:none" onclick="sendReply(this)">Send</button></div>' :
+       '<div class="notice">WhatsApp allows a typed reply only within 24 hours of the customer\'s last message. Call them, or send an approved template from BlueTick.</div>');
+    var last = el.querySelector('.chat .msg:last-child'); if (last && S.scrollChat) last.scrollIntoView();
+    S.scrollChat = false;
+  } else if (S.leadTab === 'details') {
+    var l = d.lead, o = d.options;
+    function field(k, label, type) { return '<label>' + label + '</label><input type="' + (type || 'text') + '" data-k="' + k + '" value="' + esc(l[k]) + '">'; }
+    function sel(k, label, opts) {
+      return '<label>' + label + '</label><select data-k="' + k + '">' + opts.map(function (x) {
+        return '<option' + (x === l[k] ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select>';
+    }
+    el.innerHTML = '<div class="card form">' + field('Name', 'Name') + field('Business', 'Business') +
+      '<div class="row"><div>' + sel('Category', 'Category', o.categories) + '</div><div>' + sel('Tier', 'Tier', o.tiers) + '</div></div>' +
+      '<div class="row"><div>' + field('City', 'City') + '</div><div>' + field('Area sqft', 'Area (sq ft)', 'number') + '</div></div>' +
+      field('Assigned To', 'Assigned to') +
+      '<label>Requirement</label><textarea data-k="Requirement" rows="3">' + esc(l['Requirement']) + '</textarea>' +
+      '<label>Follow-up note</label><textarea data-k="Follow-up Note" rows="2">' + esc(l['Follow-up Note']) + '</textarea>' +
+      '<button class="btn" style="width:100%;margin-top:14px" onclick="saveLead(this)">Save</button></div>' +
+      '<div class="info" style="margin:10px 2px">Lead ID ' + esc(l['Lead ID'] || '—') + ' · Campaign ' + esc(l['Campaign'] || '—') +
+      ' · Opt-in ' + esc(l['Opt-in'] || '—') + (l['State'] ? ' · ' + esc(l['State']) : '') + '</div>';
+  } else {
+    el.innerHTML = d.log.length ? d.log.map(function (x) {
+      return '<div class="log"><div>' + esc(x.change) + '</div><div class="t">' + esc(when(x.time)) + ' · ' + esc(x.actor) + '</div></div>';
+    }).join('') : '<div class="empty">No changes recorded yet</div>';
+  }
+}
+
+function afterAction(r) { toast(r.message); openLead(S.lead.card.phone, true); }
+function act(cmd, days, note) { call('act', { phone: S.lead.card.phone, cmd: cmd, days: days, note: note || '' }).then(afterAction).catch(fail); }
+function pauseBot(resume) { call('pause', { phone: S.lead.card.phone, resume: resume }).then(afterAction).catch(fail); }
+function sendReply(btn) {
+  var t = $('replyText').value.trim(); if (!t) return;
+  btn.disabled = true;
+  call('reply', { phone: S.lead.card.phone, text: t }).then(function (r) { S.scrollChat = true; afterAction(r); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+function saveLead(btn) {
+  var f = {}; document.querySelectorAll('#leadBody [data-k]').forEach(function (i) { f[i.dataset.k] = i.value; });
+  btn.disabled = true;
+  call('edit', { phone: S.lead.card.phone, fields: f }).then(afterAction).catch(function (e) { btn.disabled = false; fail(e); });
+}
+
+function openSheet(html) { $('sheet').innerHTML = html; $('sheetBg').classList.remove('hidden'); }
+function closeSheet() { $('sheetBg').classList.add('hidden'); }
+function laterSheet() {
+  openSheet('<h3>Follow up later</h3><div class="chips">' + [1, 2, 3, 7, 15, 30].map(function (n) {
+    return '<button class="chip" onclick="pickDays(this,' + n + ')">' + (n === 1 ? 'Tomorrow' : n + ' days') + '</button>'; }).join('') + '</div>' +
+    '<input id="sheetNote" type="text" placeholder="Note (optional)" style="margin:6px 0 12px">' +
+    '<div class="row"><button class="btn ghost" onclick="closeSheet()">Cancel</button><button class="btn" id="sheetOk" disabled onclick="doLater()">Save</button></div>');
+}
+var laterDays = null;
+function pickDays(el, n) { laterDays = n; el.parentNode.querySelectorAll('.chip').forEach(function (c) { c.classList.toggle('on', c === el); }); $('sheetOk').disabled = false; }
+function doLater() { closeSheet(); act('LATER', laterDays, $('sheetNote').value); }
+function noteSheet(cmd) {
+  openSheet('<h3>' + (cmd === 'WON' ? '🎉 Mark as won' : 'Close as lost') + '</h3>' +
+    '<input id="sheetNote" type="text" placeholder="' + (cmd === 'WON' ? 'Order details (optional)' : 'Reason, e.g. price, bought elsewhere') + '" style="margin-bottom:12px">' +
+    '<div class="row"><button class="btn ghost" onclick="closeSheet()">Cancel</button><button class="btn" onclick="closeSheet();act(\'' + cmd + '\',null,$(\'sheetNote\').value)">Save</button></div>');
+}
+
+// ---------------------------------------------------------------- Add
+function renderAdd() {
+  setHeader('Add a lead', false);
+  var cats = ['Applicator', 'Contractor', 'Builder', 'Architect', 'Dealer', 'Manufacturer', 'End Client', 'Other'];
+  $('main').innerHTML = '<div class="card form">' +
+    '<label>Mobile number</label><input id="a_phone" type="tel" placeholder="98xxxxxxxx">' +
+    '<label>Name</label><input id="a_name" type="text">' +
+    '<label>Business</label><input id="a_business" type="text">' +
+    '<div class="row"><div><label>Category</label><select id="a_category">' + cats.map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select></div>' +
+    '<div><label>City</label><input id="a_city" type="text"></div></div>' +
+    '<label>What they need</label><textarea id="a_note" rows="3"></textarea>' +
+    '<button class="btn" style="width:100%;margin-top:14px" onclick="addLead(this)">Add lead</button></div>' +
+    '<div class="info" style="margin:10px 2px">The lead gets a follow-up for tomorrow. The bot does not message them; WhatsApp only allows replies after they write first.</div>';
+}
+function addLead(btn) {
+  var v = function (id) { return $(id).value.trim(); };
+  btn.disabled = true;
+  call('addLead', { phone: v('a_phone'), name: v('a_name'), business: v('a_business'), category: v('a_category'), city: v('a_city'), note: v('a_note') })
+    .then(function (r) { toast(r.message); openLead(r.phone); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+
+// ---------------------------------------------------------------- Settings
+function renderSettings() {
+  setHeader('Settings', false); loading();
+  call('settings').then(function (r) {
+    if (S.tab !== 'settings' || S.lead) return;
+    var b = r.bot;
+    $('main').innerHTML = '<h2>WhatsApp bot</h2><div class="card">' +
+      '<div class="switch"><div>Send on WhatsApp<small>Off = test mode. Replies are only written to the sheet.</small></div>' +
+      '<label class="tog"><input type="checkbox" id="s_send"' + (b.sendEnabled ? ' checked' : '') + '><span></span></label></div>' +
+      '<div class="switch"><div>Bot replies automatically<small>Off = the bot stays quiet and the team replies. Alerts still come.</small></div>' +
+      '<label class="tog"><input type="checkbox" id="s_bot"' + (b.botEnabled ? ' checked' : '') + '><span></span></label></div>' +
+      '<div class="switch" style="display:block"><div style="margin-bottom:8px">How the bot talks</div><div class="seg">' +
+      '<button id="m_gentle" class="' + (b.mode !== 'sales' ? 'on' : '') + '" onclick="mode(\'gentle\')">Gentle (phase 1)</button>' +
+      '<button id="m_sales" class="' + (b.mode === 'sales' ? 'on' : '') + '" onclick="mode(\'sales\')">Sales head</button></div></div>' +
+      '<div class="switch" style="display:block"><div>Salesperson WhatsApp<small>Gets hot lead alerts and the 9 AM summary.</small></div>' +
+      '<input id="s_sales" type="tel" value="' + esc(b.salesWhatsapp) + '" placeholder="98xxxxxxxx" style="margin-top:8px"></div>' +
+      '<button class="btn" style="width:100%;margin-top:6px" onclick="saveSettings(this)">Save</button></div>' +
+      '<h2>This phone</h2><div class="card"><div class="info" style="margin-bottom:10px">Tip: in Chrome tap ⋮ then "Add to Home screen" to open this like an app.</div>' +
+      '<button class="btn ghost" style="width:100%" onclick="lock()">Lock app (forget PIN)</button></div>';
+    S.mode = b.mode === 'sales' ? 'sales' : 'gentle';
+  }).catch(fail);
+}
+function mode(m) { S.mode = m; $('m_gentle').classList.toggle('on', m === 'gentle'); $('m_sales').classList.toggle('on', m === 'sales'); }
+function saveSettings(btn) {
+  btn.disabled = true;
+  call('saveSettings', { SEND_ENABLED: $('s_send').checked ? 'true' : 'false', BOT_ENABLED: $('s_bot').checked ? 'true' : 'false',
+                         BOT_MODE: S.mode, SALES_WHATSAPP: $('s_sales').value.trim() })
+    .then(function (r) { btn.disabled = false; toast('Settings saved'); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+
+// ---------------------------------------------------------------- start
+(function start() {
+  var saved = store('amitek_pin');
+  if (!saved) return lock();
+  S.pin = saved; $('appView').classList.remove('hidden'); showTab('today');
+})();
+</script>
+</body>
+</html>

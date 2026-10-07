@@ -9,7 +9,7 @@
  *  - lets the salesperson update leads by WhatsApp: DONE / LATER / WON / LOST / LIST / HELP
  *
  * Secrets live in Project Settings > Script Properties (never in this file):
- *   ANTHROPIC_API_KEY, WA_ACCESS_TOKEN, WA_PHONE_NUMBER_ID, WEBHOOK_SECRET
+ *   ANTHROPIC_API_KEY, WA_ACCESS_TOKEN, WA_PHONE_NUMBER_ID, WEBHOOK_SECRET, APP_PIN (phone app, see App.gs)
  * Everyday settings live in the "Settings" tab of the sheet.
  */
 
@@ -37,6 +37,7 @@ var STAGES = ['Discover', 'Diagnose', 'Recommend', 'Quote', 'Close', 'Won', 'Los
 var DEFAULT_SETTINGS = {
   BOT_MODE: 'gentle',                // gentle = phase 1 polite replies, sales = full sales head
   SEND_ENABLED: 'false',             // false = dry run: replies are written to Messages but not sent
+  BOT_ENABLED: 'true',               // false = the bot stays quiet; the team replies (alerts still work)
   SALES_WHATSAPP: '',                // salesperson WhatsApp, e.g. 919812345678
   CLAUDE_MODEL: 'claude-sonnet-5-5',
   HOT_LEAD_SLA_HOURS: '2',
@@ -70,7 +71,9 @@ function setting_(name) {
   return (v === undefined || v === '') ? (DEFAULT_SETTINGS[name] || '') : v;
 }
 function settingNum_(name) { return Number(setting_(name)) || Number(DEFAULT_SETTINGS[name]) || 0; }
-function sendEnabled_() { return ['true', 'yes', '1', 'on'].indexOf(setting_('SEND_ENABLED').toLowerCase()) >= 0; }
+function isOn_(v) { return ['true', 'yes', '1', 'on'].indexOf(String(v).toLowerCase()) >= 0; }
+function sendEnabled_() { return isOn_(setting_('SEND_ENABLED')); }
+function botEnabled_() { return isOn_(setting_('BOT_ENABLED')); }
 
 // ===================================================================== sheet helpers
 function ss_() { return SpreadsheetApp.getActiveSpreadsheet(); }
@@ -183,7 +186,8 @@ function history_(phone, limit) {
   var rows = sh.getRange(start, 1, last - start + 1, MESSAGE_COLS.length).getValues();
   var out = [];
   for (var i = rows.length - 1; i >= 0 && out.length < limit; i--) {
-    if (String(rows[i][1]) === phone) out.unshift({ direction: rows[i][2], sender: rows[i][3], body: String(rows[i][4]) });
+    if (String(rows[i][1]) === phone) out.unshift({ direction: rows[i][2], sender: rows[i][3], body: String(rows[i][4]),
+                                                       time: asDate_(rows[i][0]) ? asDate_(rows[i][0]).toISOString() : '' });
   }
   return out;
 }
@@ -213,7 +217,9 @@ function doPost(e) {
 }
 
 function doGet(e) {
-  return ContentService.createTextOutput('Amitek bot is running');
+  var p = (e && e.parameter) || {};
+  if (p['hub.challenge']) return ContentService.createTextOutput(p['hub.challenge']);  // webhook verification
+  return appPage_();  // the phone app (App.gs)
 }
 
 function logRaw_(raw) {
@@ -275,6 +281,7 @@ function parseWebhook_(payload) {
 }
 
 // ===================================================================== WhatsApp (BlueTick = Meta Cloud API format)
+var lastWaError_ = '';
 function waPost_(body) {
   if (!sendEnabled_()) {
     console.log('SEND_ENABLED is false, not sending: ' + JSON.stringify(body).slice(0, 300));
@@ -288,7 +295,8 @@ function waPost_(body) {
     payload: JSON.stringify(body)
   });
   if (res.getResponseCode() >= 300) {
-    console.error('WhatsApp send failed ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 500));
+    lastWaError_ = res.getResponseCode() + ': ' + res.getContentText().slice(0, 500);
+    console.error('WhatsApp send failed ' + lastWaError_);
     return null;
   }
   try { return JSON.parse(res.getContentText()).messages[0].id; } catch (err) { return 'sent'; }
@@ -548,6 +556,7 @@ function handleInbound_(m) {
   }
   var paused = asDate_(lead['Bot Paused Until']);
   if (paused && paused > new Date()) return;  // a human from the team is handling this chat
+  if (!botEnabled_()) return;                  // bot switched off: the team replies, hourly check alerts them
 
   var result;
   try {
@@ -698,32 +707,41 @@ function salesCommand_(text) {
   if (cmd === 'HELP' || cmd === '?') return HELP;
   if (cmd === 'LIST' || cmd === 'PENDING') return pendingReport_();
   if (['DONE', 'LATER', 'WON', 'LOST'].indexOf(cmd) < 0 || parts.length < 2) return 'Command not understood.\n\n' + HELP;
-  var phone = normPhone_(parts[1]);
+  var days = null, note = parts.slice(2).join(' ');
+  if (cmd === 'LATER' && !isNaN(parseInt(parts[2], 10))) { days = parseInt(parts[2], 10); note = parts.slice(3).join(' '); }
+  var r = leadAction_(normPhone_(parts[1]), cmd, days, note, 'sales');
+  return r.ok ? r.message : 'No lead found for ' + parts[1] + '.';
+}
+
+/** DONE / LATER / WON / LOST on one lead. Used by WhatsApp commands and the phone app. */
+function leadAction_(phone, cmd, days, note, actor) {
   var lead = getLead_(phone);
-  if (!lead) return 'No lead found for ' + parts[1] + '.';
-  var rest = parts.slice(2).join(' ');
+  if (!lead) return { ok: false, message: 'No lead found for ' + phone + '.' };
+  note = note || '';
   var now = new Date();
   if (cmd === 'DONE') {
     var next = addHours_(72);
-    upsertLead_(phone, { 'Last Human Contact': now, 'Next Follow-up': next, 'Follow-up Note': rest,
-                         'Status': ['Replied', 'Hot', 'Qualified'].indexOf(lead['Status']) >= 0 ? 'Contacted' : lead['Status'] }, 'sales');
-    return '✅ ' + label_(lead) + ' marked contacted. Next check ' + fmt_(next) + '.';
+    upsertLead_(phone, { 'Last Human Contact': now, 'Next Follow-up': next, 'Follow-up Note': note,
+                         'Status': ['Replied', 'Hot', 'Qualified'].indexOf(lead['Status']) >= 0 ? 'Contacted' : lead['Status'] }, actor);
+    return { ok: true, message: '✅ ' + label_(lead) + ' marked contacted. Next check ' + fmt_(next) + '.' };
   }
   if (cmd === 'LATER') {
-    var days = parseInt(parts[2], 10);
-    var note = isNaN(days) ? rest : parts.slice(3).join(' ');
-    if (isNaN(days)) days = 3;
+    days = (days === null || days === undefined || isNaN(days)) ? 3 : Math.max(0, Number(days));
     var when = addHours_(24 * days);
-    upsertLead_(phone, { 'Last Human Contact': now, 'Next Follow-up': when, 'Follow-up Note': note }, 'sales');
-    return '📅 ' + label_(lead) + ': follow up on ' + fmt_(when) + '.';
+    upsertLead_(phone, { 'Last Human Contact': now, 'Next Follow-up': when, 'Follow-up Note': note,
+                         'Status': ['Replied', 'Hot', 'Qualified'].indexOf(lead['Status']) >= 0 ? 'Contacted' : lead['Status'] }, actor);
+    return { ok: true, message: '📅 ' + label_(lead) + ': follow up on ' + fmt_(when) + '.' };
   }
   if (cmd === 'WON') {
-    upsertLead_(phone, { 'Status': 'Won', 'Stage': 'Won', 'Next Follow-up': '', 'Last Human Contact': now, 'Follow-up Note': rest }, 'sales');
-    return '🎉 ' + label_(lead) + ' marked WON.';
+    upsertLead_(phone, { 'Status': 'Won', 'Stage': 'Won', 'Next Follow-up': '', 'Last Human Contact': now, 'Follow-up Note': note }, actor);
+    return { ok: true, message: '🎉 ' + label_(lead) + ' marked WON.' };
   }
-  upsertLead_(phone, { 'Status': 'Lost', 'Stage': 'Lost', 'Next Follow-up': '', 'Last Human Contact': now,
-                       'Lost Reason': rest || 'not given' }, 'sales');
-  return 'Closed ' + label_(lead) + ' as LOST (' + (rest || 'no reason given') + ').';
+  if (cmd === 'LOST') {
+    upsertLead_(phone, { 'Status': 'Lost', 'Stage': 'Lost', 'Next Follow-up': '', 'Last Human Contact': now,
+                         'Lost Reason': note || 'not given' }, actor);
+    return { ok: true, message: 'Closed ' + label_(lead) + ' as LOST (' + (note || 'no reason given') + ').' };
+  }
+  return { ok: false, message: 'Unknown action ' + cmd };
 }
 
 /** Board tab: engaged leads, what needs action first. */
@@ -764,6 +782,7 @@ function setup() {
 
   var props = PropertiesService.getScriptProperties();
   if (!props.getProperty('WEBHOOK_SECRET')) props.setProperty('WEBHOOK_SECRET', Utilities.getUuid().replace(/-/g, ''));
+  if (!props.getProperty('APP_PIN')) props.setProperty('APP_PIN', String(Math.floor(100000 + Math.random() * 900000)));
 
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (['hourlyCheck', 'dailySummary'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
@@ -772,7 +791,8 @@ function setup() {
   ScriptApp.newTrigger('dailySummary').timeBased().atHour(settingNum_('DAILY_SUMMARY_HOUR')).everyDays(1)
       .inTimezone('Asia/Kolkata').create();
   refreshBoard_();
-  console.log('Setup done. Webhook secret is in Project Settings > Script Properties > WEBHOOK_SECRET.');
+  console.log('Setup done. Webhook secret and phone app PIN are in Project Settings > Script Properties ' +
+              '(WEBHOOK_SECRET, APP_PIN).');
 }
 
 /** Test from the editor without WhatsApp: pretend a customer wrote a message (sending stays off if SEND_ENABLED=false). */

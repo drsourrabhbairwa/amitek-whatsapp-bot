@@ -218,7 +218,79 @@ const tests = {
     post(env, payload([text(CUST, 'hi')]));
     assert(env.claudeCalls[0].body.system[0].text.includes('senior sales head'));
   }
+  ,
+  'app: PIN required, wrong PINs lock out'() {
+    const env = load(BASE);
+    assert(/^\d{6}$/.test(env.props.APP_PIN), 'setup made a 6-digit PIN');
+    assert.strictEqual(JSON.parse(env.ctx.api('nope', 'dashboard', '{}')).error, 'PIN');
+    for (let i = 0; i < 10; i++) env.ctx.api('nope', 'dashboard', '{}');
+    assert(JSON.parse(env.ctx.api(env.props.APP_PIN, 'dashboard', '{}')).error.includes('Too many'));
+  },
+  'app: dashboard, search, lead detail, actions, reply, settings'() {
+    const env = load(Object.assign({}, BASE, { claude: [
+      tool('handoff_to_sales', { reason: 'price', summary: 'Applicator Jaipur 2000 sqft', priority: 'hot' }), say('Ji 🙏 team call karegi')] }));
+    const api = (a, x) => JSON.parse(env.ctx.api(env.props.APP_PIN, a, JSON.stringify(x || {})));
+    post(env, payload([text(CUST, 'rate batao')], [{ wa_id: CUST, profile: { name: 'Ramesh' } }]));
+    let d = api('dashboard');
+    assert.strictEqual(d.counts.hot, 1); assert.strictEqual(d.hot[0].name, 'Ramesh'); assert.strictEqual(d.bot.sendEnabled, true);
+    assert.strictEqual(api('search', { q: '1111' }).total, 1);
+    assert.strictEqual(api('search', { q: 'ramesh' }).leads[0].phone, CUST);
+    assert.strictEqual(api('search', { status: 'Won' }).total, 0);
+    let l = api('lead', { phone: '9811112222' });
+    assert.strictEqual(l.messages.length, 2); assert(l.messages[0].time); assert.strictEqual(l.canReply, true);
+    assert(l.log.some(x => x.change.includes('Hot')));
+    assert(l.lead['Handoff At'].endsWith('Z'));
+    // team reply from the app: sent, recorded, bot paused, echo ignored
+    const before = env.sent.length;
+    assert.strictEqual(api('reply', { phone: CUST, text: 'Namaste, main Sunil' }).message, 'Sent');
+    assert.strictEqual(env.sent.length, before + 1);
+    l = api('lead', { phone: CUST });
+    assert.strictEqual(l.messages[2].sender, 'human'); assert.strictEqual(l.botPaused, true);
+    const id = env.sent[env.sent.length - 1].body.to && env.sheets['Messages'].rows.slice(-1)[0][5];
+    post(env, payload([{ from: BUSINESS, to: CUST, id, type: 'text', text: { body: 'Namaste, main Sunil' } }]));
+    assert.strictEqual(api('lead', { phone: CUST }).messages.length, 3, 'echo not duplicated');
+    // actions
+    assert(api('act', { phone: CUST, cmd: 'DONE', note: 'spoke' }).message.startsWith('✅'));
+    assert.strictEqual(api('lead', { phone: CUST }).lead.Status, 'Contacted');
+    api('act', { phone: CUST, cmd: 'LATER', days: 7, note: 'site visit' });
+    assert(Math.abs(new Date(api('lead', { phone: CUST }).card.next) - Date.now() - 7 * 86400000) < 60000);
+    api('edit', { phone: CUST, fields: { City: 'Ajmer', Category: 'Contractor', Phone: '1', 'Area sqft': '1500' } });
+    l = api('lead', { phone: CUST });
+    assert.strictEqual(l.lead.City, 'Ajmer'); assert.strictEqual(l.lead.Category, 'Contractor'); assert.strictEqual(l.lead.Phone, CUST);
+    assert.strictEqual(l.lead['Area sqft'], '1500');
+    api('pause', { phone: CUST, resume: true });
+    assert.strictEqual(api('lead', { phone: CUST }).botPaused, false);
+    api('act', { phone: CUST, cmd: 'WON', note: '40 buckets' });
+    assert.strictEqual(api('dashboard').counts.won, 1);
+    // add lead
+    assert.strictEqual(api('addLead', { phone: '98111 33333', name: 'Walk-in', category: 'Builder', city: 'Jaipur' }).phone, '919811133333');
+    assert(api('addLead', { phone: '9811133333' }).error.includes('already'));
+    assert(api('addLead', { phone: '123' }).error);
+    // settings: bot off means no AI reply, and alerts still work
+    let st = api('saveSettings', { BOT_ENABLED: 'false', SALES_WHATSAPP: '98000 00001', BOT_MODE: 'weird' });
+    assert.strictEqual(st.bot.botEnabled, false); assert.strictEqual(st.bot.salesWhatsapp, SALES); assert.strictEqual(st.bot.mode, 'gentle');
+    post(env, payload([text('919822223333', 'hello')]));
+    assert.strictEqual(env.claudeCalls.length, 2, 'no AI call while bot is off');
+    // test mode blocks team replies with a clear message
+    api('saveSettings', { SEND_ENABLED: 'false' });
+    assert(api('reply', { phone: '919822223333', text: 'hi' }).error.includes('Test mode'));
+  },
+  'app: reply outside 24h window explains why'() {
+    const env = load(BASE);
+    const api = (a, x) => JSON.parse(env.ctx.api(env.props.APP_PIN, a, JSON.stringify(x || {})));
+    api('addLead', { phone: '9811112222' });
+    const fetch = env.ctx.UrlFetchApp.fetch;
+    env.ctx.UrlFetchApp.fetch = () => ({ getResponseCode: () => 400, getContentText: () => '{"error":{"code":131047,"message":"Re-engagement message"}}' });
+    assert(api('reply', { phone: CUST, text: 'hi' }).error.includes('24 hours'));
+    env.ctx.UrlFetchApp.fetch = fetch;
+  },
+  'doGet serves the app and answers webhook verification'() {
+    const env = load(BASE);
+    assert.strictEqual(env.ctx.doGet({ parameter: {} }).file, 'App');
+    assert.strictEqual(env.ctx.doGet({ parameter: { 'hub.challenge': '42' } }).text, '42');
+  }
 };
+
 
 let failed = 0;
 for (const [name, fn] of Object.entries(tests)) {

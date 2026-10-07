@@ -11,6 +11,7 @@ Hinglish, keeps every lead tracked so none goes off road, and hands leads to a s
 | Lead list | a Google Sheet (Leads, Messages, Log, Board tabs) | Postgres + board page |
 | Hosting | none, runs free inside Google | Render or AWS (~US$13/month) |
 | Setup | [`apps-script/SETUP.md`](apps-script/SETUP.md) | see "Deploy" below |
+| Phone app | yes: leads, chats, Done/Later/Won/Lost, bot on/off (PIN protected) | board page only |
 | Tests | `node apps-script/test/test.js` | `pytest` |
 
 Both editions behave the same: gentle phase-1 replies, STOP/START, Call me, human takeover, hourly alerts,

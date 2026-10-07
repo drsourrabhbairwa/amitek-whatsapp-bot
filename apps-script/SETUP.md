@@ -18,7 +18,9 @@ Never paste keys or tokens into chat, email, or this repo. They go only into Scr
 ## 2. Add the script
 1. In the sheet: **Extensions > Apps Script**.
 2. Delete what is in `Code.gs` and paste the whole of [`Code.gs`](Code.gs) from this folder. Save (Ctrl+S).
-3. Click **Project Settings** (gear icon), tick **Show "appsscript.json" manifest file in editor**, go back to the editor,
+3. Click **+ (Add a file) > Script**, name it `App`, and paste [`App.gs`](App.gs).
+4. Click **+ > HTML**, name it `App`, and paste [`App.html`](App.html). Save.
+5. Click **Project Settings** (gear icon), tick **Show "appsscript.json" manifest file in editor**, go back to the editor,
    open `appsscript.json` and replace it with [`appsscript.json`](appsscript.json). Save.
 
 ## 3. Add the secrets
@@ -36,7 +38,8 @@ Save. (`WEBHOOK_SECRET` is created for you in the next step.)
 1. In the editor, pick `setup` in the function dropdown and click **Run**.
 2. Google asks for permission: **Review permissions**, choose your account, **Advanced > Go to project (unsafe) > Allow**.
    ("Unsafe" only means Google has not reviewed your own private script.)
-3. This creates the hourly check, the 9 AM summary, and a `WEBHOOK_SECRET` in Script Properties.
+3. This creates the hourly check, the 9 AM summary, a `WEBHOOK_SECRET` and a 6-digit `APP_PIN` (for the phone app)
+   in Script Properties. You can change `APP_PIN` to any number you like.
 
 ## 5. Fill in Settings
 In the sheet's **Settings** tab:
@@ -62,6 +65,23 @@ reply. Nothing is sent while `SEND_ENABLED` is `false`. If it fails, the error s
    **Leads** gets your row.
 3. When the replies look right, set `SEND_ENABLED` to `true`. Message again; now the bot replies on WhatsApp.
 
+## Phone app
+1. On your phone, open the Web app URL from step 7 **without** the `?key=...` part.
+2. Enter the `APP_PIN`.
+3. In Chrome tap **⋮ > Add to Home screen**. It now opens like an app.
+
+What it does:
+- **Today**: hot leads, overdue follow-ups, customers waiting for a reply, what's coming up.
+- **Lead**: the full WhatsApp chat, Call and WhatsApp buttons, Done / Later / Won / Lost, edit details,
+  change history, and a reply box to answer as the team (the bot then stays quiet for that customer for 12 hours).
+  WhatsApp allows typed replies only within 24 hours of the customer's last message.
+- **Leads**: search all leads by name, number or city, filter by status.
+- **Add**: add a walk-in or phone lead.
+- **Settings**: test mode on/off, bot on/off, gentle or sales mode, salesperson number.
+
+Share the PIN only with your sales team. After 10 wrong PINs the app locks for an hour.
+Google shows a small "created by a Google Apps Script user" line at the top; that is normal.
+
 ## Everyday use
 - **Leads** tab is the lead list. **Board** tab shows engaged leads, hot and overdue first (refreshed hourly).
 - **Log** tab records every status / follow-up change and who made it.
@@ -76,5 +96,5 @@ reply. Nothing is sent while `SEND_ENABLED` is `false`. If it fails, the error s
 - **Knowledge** tab is what the bot knows. Edit it any time (add prices here later; it stays private in your sheet).
 
 ## Updating the code later
-Paste the new `Code.gs`, save, then **Deploy > Manage deployments > Edit (pencil) > Version: New version > Deploy**.
+Paste the new `Code.gs`, `App.gs` and `App.html`, save, then **Deploy > Manage deployments > Edit (pencil) > Version: New version > Deploy**.
 This keeps the same webhook URL.

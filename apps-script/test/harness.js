@@ -30,6 +30,7 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
   const claudeCalls = [];
   const triggers = [];
   const store = Object.assign({}, props);
+  const cache = {};
   const ss = {
     getSheetByName: n => sheets[n] || null,
     insertSheet: n => (sheets[n] = makeSheet(n))
@@ -43,6 +44,8 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
     PropertiesService: { getScriptProperties: () => ({
       getProperty: k => (k in store ? store[k] : null), setProperty: (k, v) => { store[k] = v; } }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    CacheService: { getScriptCache: () => ({ get: k => (k in cache ? cache[k] : null), put: (k, v) => { cache[k] = v; } }) },
+    HtmlService: { createHtmlOutputFromFile: f => { const o = { file: f, setTitle: () => o, addMetaTag: () => o }; return o; } },
     ContentService: { createTextOutput: t => ({ text: t }) },
     Utilities: {
       formatDate: (d, tz, f) => new Date(d).toISOString(),
@@ -74,7 +77,8 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
     }
   };
   vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8'), ctx, { filename: 'Code.gs' });
+  ['Code.gs', 'App.gs'].forEach(f =>
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), ctx, { filename: f }));
   ctx.setup();
   // apply test settings to the Settings tab
   const st = sheets['Settings'];
@@ -83,7 +87,7 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
     row[1] = settings[k];
   });
   vm.runInContext('settingsCache_ = null;', ctx);
-  return { ctx, sheets, sent, claudeCalls, triggers, props: store };
+  return { ctx, sheets, sent, claudeCalls, triggers, props: store, cache };
 }
 
 module.exports = { load };
