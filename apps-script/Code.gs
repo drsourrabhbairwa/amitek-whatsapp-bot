@@ -48,7 +48,8 @@ var DEFAULT_SETTINGS = {
   QUIET_DAYS: '3',
   DAILY_SUMMARY_HOUR: '9',
   WA_API_URL: 'https://crmapi.bluetickapi.com/api/meta',
-  WA_API_VERSION: 'v19.0'
+  WA_API_VERSION: 'v19.0',
+  RELAY_URL: ''                      // optional Cloudflare relay (relay/worker.js) if BlueTick cannot verify the Google link
 };
 
 var STOP_WORDS = ['stop', 'unsubscribe', 'stop messages', 'not interested', 'abhi nahi', 'band karo', 'मत भेजो'];

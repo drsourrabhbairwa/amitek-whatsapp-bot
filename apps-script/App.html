@@ -503,7 +503,9 @@ function check(ok, text, hint) {
 }
 function setupHtml(st) {
   var k = st.keys, base = S.url || st.serviceUrl || '';
-  var hook = base && st.webhookKey ? base + '?key=' + st.webhookKey : '';
+  var relay = (st.relayUrl || '').replace(/\/+$/, '');
+  var hook = !(base && st.webhookKey) ? '' : relay ? relay + '/?to=' + encodeURIComponent(base) + '&key=' + st.webhookKey
+                                                : base + '?key=' + st.webhookKey;
   var done = k.ai && k.waToken && k.waPhoneId && st.bot.salesWhatsapp && st.lastWebhook && st.installed;
   return '<h2>Setup' + (done ? ' ✓' : '') + '</h2><div class="card">' +
     check(st.installed, 'Sheet tabs and timers installed', 'Tap "Repair setup" below.') +
@@ -527,6 +529,11 @@ function setupHtml(st) {
     '<label class="info" style="display:block;margin:14px 0 4px">Webhook link for BlueTick</label>' +
     (hook ? '<div class="hook" id="hookText">' + esc(hook) + '</div><button class="btn ghost" style="width:100%;margin-top:8px" onclick="copyHook()">Copy webhook link</button>'
           : '<div class="info">Open this app with the Web app link to see it.</div>') +
+    '<details style="margin-top:12px"' + (relay ? ' open' : '') + '><summary class="info" style="cursor:pointer">BlueTick says "failed to verify"?</summary>' +
+    '<div class="info" style="margin:8px 0">Google links answer with a redirect that BlueTick does not accept. Make a free Cloudflare relay ' +
+    '(see the setup guide, 5 minutes), paste its link here and save. The webhook link above then goes through the relay.</div>' +
+    '<input id="k_relay" type="text" autocomplete="off" autocapitalize="off" placeholder="https://amitek-relay.yourname.workers.dev" value="' + esc(relay) + '">' +
+    '<button class="btn soft" style="width:100%;margin-top:8px" onclick="saveRelay(this)">Save relay link</button></details>' +
     '<button class="btn ghost" style="width:100%;margin-top:8px" onclick="runTest(this,\'install\')">Repair setup</button></div>';
 }
 var AI_HELP = {
@@ -551,6 +558,12 @@ function saveKeys(btn) {
   call('saveKeys', { provider: $('k_provider').value, model: $('k_model').value.trim(), aiKey: $('k_ai').value.trim(), waToken: $('k_token').value.trim(), waPhoneId: $('k_phone').value.trim(),
                      waApiUrl: $('k_url').value.trim(), waApiVersion: $('k_ver').value.trim() })
     .then(function () { toast('Keys saved'); renderSettings(); }).catch(function (e) { btn.disabled = false; fail(e); });
+}
+function saveRelay(btn) {
+  btn.disabled = true;
+  call('saveKeys', { relayUrl: $('k_relay').value.trim() })
+    .then(function () { toast('Relay saved. Copy the new webhook link into BlueTick.'); renderSettings(); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
 }
 function runTest(btn, action) {
   var t = btn.textContent; btn.disabled = true; btn.textContent = 'Working…';

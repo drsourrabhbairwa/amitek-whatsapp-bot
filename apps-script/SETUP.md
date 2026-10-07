@@ -33,6 +33,15 @@ they go only into the app's Setup screen.
 6. The bot starts in test mode (replies are written to the sheet, not sent). When the replies look right,
    turn on **Send on WhatsApp** in Settings.
 
+### If BlueTick says "failed to verify channel"
+Google's link answers with a redirect, which BlueTick's check does not accept. Put a free relay in between (5 minutes):
+1. Sign up free at **dash.cloudflare.com** (no card needed).
+2. **Workers & Pages > Create > Create Worker**, name it `amitek-relay`, click **Deploy**.
+3. Click **Edit code**, delete everything, paste the whole of `worker.js` (from the release), click **Deploy**.
+4. Copy the worker link (like `https://amitek-relay.yourname.workers.dev`).
+5. In the app: **Settings > Setup > BlueTick says "failed to verify"?**, paste the worker link, tap **Save relay link**.
+6. Tap **Copy webhook link** again and paste this new link in BlueTick.
+
 Other team members install the same APK and enter the same link and PIN.
 No Android phone? Open the Web app URL in any browser; it is the same app.
 

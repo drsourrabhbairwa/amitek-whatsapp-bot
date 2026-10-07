@@ -213,6 +213,7 @@ var APP_ACTIONS = {
       keys: { claude: !!props.getProperty('ANTHROPIC_API_KEY'), ai: !!props.getProperty(aiKeyName_()), waToken: !!props.getProperty('WA_ACCESS_TOKEN'),
               waPhoneId: !!props.getProperty('WA_PHONE_NUMBER_ID') },
       webhookKey: props.getProperty('WEBHOOK_SECRET') || '',
+      relayUrl: setting_('RELAY_URL'),
       serviceUrl: (function () { try { return ScriptApp.getService().getUrl() || ''; } catch (err) { return ''; } })(),
       ai: { provider: aiProvider_(), model: aiModel_(), customModel: setting_('AI_MODEL'),
             providers: [{ id: 'claude', name: 'Claude (best, paid)' }].concat(Object.keys(AI_PROVIDERS).map(function (k) {
@@ -243,6 +244,11 @@ var APP_ACTIONS = {
     var s = {};
     if (a.waApiUrl) s.WA_API_URL = String(a.waApiUrl).trim();
     if (a.waApiVersion) s.WA_API_VERSION = String(a.waApiVersion).trim();
+    if (a.relayUrl !== undefined) {
+      var ru = String(a.relayUrl).trim().replace(/[?#].*$/, '').replace(/\/+$/, '');
+      if (ru && !/^https:\/\/[^\s]+$/.test(ru)) return { error: 'The relay link must start with https://' };
+      s.RELAY_URL = ru;
+    }
     if (Object.keys(s).length) writeSettings_(s);
     if (saved.length) logChange_('', 'app', 'Keys updated: ' + saved.join(', '));
     return { message: 'Saved' };

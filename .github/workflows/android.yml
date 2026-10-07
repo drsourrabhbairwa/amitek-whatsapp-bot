@@ -3,7 +3,7 @@ name: Build Android app
 on:
   push:
     branches: [main]
-    paths: ['apps-script/**', 'android/**', '.github/workflows/android.yml']
+    paths: ['apps-script/**', 'android/**', 'relay/**', '.github/workflows/android.yml']
   workflow_dispatch:
 
 permissions:
@@ -41,6 +41,7 @@ jobs:
           mkdir -p out
           cp android/app/build/outputs/apk/debug/app-debug.apk out/Amitek-Leads.apk
           cp apps-script/dist/Amitek_Bot.gs out/Amitek_Bot.gs
+          cp relay/worker.js out/worker.js
 
       - uses: actions/upload-artifact@v4
         with:
@@ -59,3 +60,4 @@ jobs:
           files: |
             out/Amitek-Leads.apk
             out/Amitek_Bot.gs
+            out/worker.js

@@ -359,6 +359,12 @@ const tests = {
     st = api('status'); assert.strictEqual(st.ai.provider, 'claude'); assert.strictEqual(env.props.ANTHROPIC_API_KEY, 'sk-ant');
     assert.strictEqual(env.props.GEMINI_API_KEY, 'AIza-test');
     assert(api('saveKeys', { provider: 'hack' }).error);
+    // optional webhook relay link
+    api('saveKeys', { relayUrl: 'https://amitek-relay.me.workers.dev/?x=1' });
+    assert.strictEqual(api('status').relayUrl, 'https://amitek-relay.me.workers.dev');
+    assert(api('saveKeys', { relayUrl: 'http://bad' }).error);
+    api('saveKeys', { relayUrl: '' });
+    assert.strictEqual(api('status').relayUrl, '');
   }
 };
 
