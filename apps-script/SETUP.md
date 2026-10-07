@@ -4,7 +4,8 @@ You need two files, both on the [latest release](https://github.com/drsourrabhba
 - `Amitek_Bot.gs`: the whole bot in one file
 - `Amitek-Leads.apk`: the Android app
 
-And your keys: a Claude API key (console.anthropic.com > API keys), and from BlueTick > Bulk Campaign >
+And your keys: a Claude API key (console.anthropic.com > API keys), or for free testing a Google Gemini key
+(aistudio.google.com > Get API key), Groq key (console.groq.com) or OpenRouter key (openrouter.ai); and from BlueTick > Bulk Campaign >
 Create API Campaign > API Details: the access token and the Phone Number ID. Never paste keys into chat or email;
 they go only into the app's Setup screen.
 
@@ -24,8 +25,8 @@ they go only into the app's Setup screen.
 ## 3. The app (1 minute)
 1. Install `Amitek-Leads.apk` on your Android phone (allow "Install unknown apps" when asked).
 2. Open it, paste the Web app URL, and choose a PIN for your team. The app sets up the sheet tabs and timers.
-3. On the **Setup** screen: paste the Claude key, BlueTick token and Phone Number ID, tap **Save keys**,
-   add the salesperson's WhatsApp number, then tap **Test Claude** and **Test WhatsApp**.
+3. On the **Setup** screen: pick the AI (Claude, or Gemini / Groq / OpenRouter for free testing), paste its key, BlueTick token and Phone Number ID, tap **Save keys**,
+   add the salesperson's WhatsApp number, then tap **Test AI** and **Test WhatsApp**.
 4. Tap **Copy webhook link**. In BlueTick > **Webhooks > Add Webhook**, paste it, tick **Incoming Messages**
    and **Outgoing Messages**, and save.
 5. Send "hi" to your business number from your own phone. The Setup screen shows ✓ when messages arrive.

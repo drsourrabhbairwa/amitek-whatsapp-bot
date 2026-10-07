@@ -302,12 +302,12 @@ const tests = {
       contents: JSON.stringify({ _app: 1, pin, action, args }) } }).text);
     assert.strictEqual(http('dashboard', {}, '000').error, 'PIN');
     let st = http('status');
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(st.keys)), { claude: false, waToken: false, waPhoneId: false });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(st.keys)), { claude: false, ai: false, waToken: false, waPhoneId: false });
     assert.strictEqual(st.webhookKey, SECRET); assert.strictEqual(st.installed, true);
     assert.strictEqual(http('testClaude').error, 'Add the Claude API key first');
     http('saveKeys', { claude: 'sk-test', waToken: 'tok', waPhoneId: '123', waApiVersion: 'v20.0' });
     st = http('status');
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(st.keys)), { claude: true, waToken: true, waPhoneId: true });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(st.keys)), { claude: true, ai: true, waToken: true, waPhoneId: true });
     assert.strictEqual(st.waApiVersion, 'v20.0');
     assert(!JSON.stringify(st).includes('sk-test'), 'secrets are never sent back');
     http('saveKeys', { claude: '' });
@@ -320,8 +320,48 @@ const tests = {
     assert.strictEqual(http('status', {}, '7777').bot.sendEnabled, false);
     const r = env.ctx.doPost({ parameter: { key: SECRET }, postData: { contents: JSON.stringify(payload([text(CUST, 'what is "_app"')])) } });
     assert.strictEqual(r.text, 'ok', 'a WhatsApp webhook mentioning _app is still a webhook');
+  },
+  'other AI provider (Gemini) works through the same tools'() {
+    const env = load(Object.assign({}, BASE, { props: Object.assign({}, BASE.props, { ANTHROPIC_API_KEY: '' }) }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    api('saveKeys', { provider: 'gemini', aiKey: 'AIza-test' });
+    assert.strictEqual(env.props.GEMINI_API_KEY, 'AIza-test'); assert.strictEqual(env.props.ANTHROPIC_API_KEY, '');
+    let st = api('status');
+    assert.strictEqual(st.ai.provider, 'gemini'); assert.strictEqual(st.keys.ai, true); assert.strictEqual(st.ai.model, 'gemini-2.5-flash');
+    const calls = [];
+    const answers = [
+      { choices: [{ message: { content: null, tool_calls: [{ id: 'c1', type: 'function',
+        function: { name: 'update_lead', arguments: '{"category":"Builder","city":"Ajmer"}' } }] } }] },
+      { choices: [{ message: { content: 'Namaste ji 🙏 kitna area hai?' } }] }];
+    const orig = env.ctx.UrlFetchApp.fetch;
+    env.ctx.UrlFetchApp.fetch = (url, opt) => {
+      if (url.includes('generativelanguage')) {
+        calls.push({ url, auth: opt.headers.Authorization, body: JSON.parse(opt.payload) });
+        return { getResponseCode: () => 200, getContentText: () => JSON.stringify(answers.shift()) };
+      }
+      return orig(url, opt);
+    };
+    post(env, payload([text(CUST, 'hum builder hain Ajmer se')]));
+    assert.strictEqual(calls.length, 2);
+    assert.strictEqual(calls[0].auth, 'Bearer AIza-test');
+    assert.strictEqual(calls[0].body.messages[0].role, 'system');
+    assert.strictEqual(calls[0].body.tools[0].function.name, 'update_lead');
+    const m2 = calls[1].body.messages;
+    assert.strictEqual(m2[m2.length - 2].tool_calls[0].function.name, 'update_lead');
+    assert.deepStrictEqual(Object.assign({}, m2[m2.length - 1], { content: '' }), { role: 'tool', tool_call_id: 'c1', content: '' });
+    const l = lead(env, CUST);
+    assert.strictEqual(l.Category, 'Builder'); assert.strictEqual(l.City, 'Ajmer');
+    assert.strictEqual(texts(env).pop().text, 'Namaste ji 🙏 kitna area hai?');
+    // custom model, then back to Claude keeps both keys
+    api('saveKeys', { provider: 'groq', model: 'my-model', aiKey: 'gsk' });
+    st = api('status'); assert.strictEqual(st.ai.model, 'my-model'); assert.strictEqual(env.props.GROQ_API_KEY, 'gsk');
+    api('saveKeys', { provider: 'claude', aiKey: 'sk-ant' });
+    st = api('status'); assert.strictEqual(st.ai.provider, 'claude'); assert.strictEqual(env.props.ANTHROPIC_API_KEY, 'sk-ant');
+    assert.strictEqual(env.props.GEMINI_API_KEY, 'AIza-test');
+    assert(api('saveKeys', { provider: 'hack' }).error);
   }
 };
+
 
 
 

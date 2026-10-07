@@ -9,7 +9,7 @@
  *  - lets the salesperson update leads by WhatsApp: DONE / LATER / WON / LOST / LIST / HELP
  *
  * Secrets live in Project Settings > Script Properties (never in this file):
- *   ANTHROPIC_API_KEY, WA_ACCESS_TOKEN, WA_PHONE_NUMBER_ID, WEBHOOK_SECRET, APP_PIN (phone app, see App.gs)
+ *   ANTHROPIC_API_KEY (or GEMINI_API_KEY / GROQ_API_KEY / OPENROUTER_API_KEY for testing), WA_ACCESS_TOKEN, WA_PHONE_NUMBER_ID, WEBHOOK_SECRET, APP_PIN (phone app, see App.gs)
  * Everyday settings live in the "Settings" tab of the sheet.
  */
 
@@ -40,6 +40,8 @@ var DEFAULT_SETTINGS = {
   BOT_ENABLED: 'true',               // false = the bot stays quiet; the team replies (alerts still work)
   SALES_WHATSAPP: '',                // salesperson WhatsApp, e.g. 919812345678
   CLAUDE_MODEL: 'claude-sonnet-5-5',
+  AI_PROVIDER: 'claude',             // claude for real use; gemini, groq or openrouter for free testing
+  AI_MODEL: '',                      // model for gemini/groq/openrouter; blank = that provider's default below
   HOT_LEAD_SLA_HOURS: '2',
   UNANSWERED_ALERT_MINUTES: '30',
   HUMAN_TAKEOVER_HOURS: '12',
@@ -457,6 +459,65 @@ function callClaude_(system, messages) {
   return JSON.parse(res.getContentText());
 }
 
+/**
+ * Other AI providers, for testing without a Claude key. They speak the OpenAI chat format, so the request and
+ * answer are translated to and from the Claude format used everywhere else in this script.
+ */
+var AI_PROVIDERS = {
+  gemini: { name: 'Google Gemini', key: 'GEMINI_API_KEY', model: 'gemini-2.5-flash',
+            url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions' },
+  groq: { name: 'Groq', key: 'GROQ_API_KEY', model: 'llama-3.3-70b-versatile',
+          url: 'https://api.groq.com/openai/v1/chat/completions' },
+  openrouter: { name: 'OpenRouter', key: 'OPENROUTER_API_KEY', model: 'meta-llama/llama-3.3-70b-instruct:free',
+                url: 'https://openrouter.ai/api/v1/chat/completions' }
+};
+function aiProvider_() { var p = String(setting_('AI_PROVIDER')).toLowerCase(); return AI_PROVIDERS[p] ? p : 'claude'; }
+function aiKeyName_() { var p = aiProvider_(); return p === 'claude' ? 'ANTHROPIC_API_KEY' : AI_PROVIDERS[p].key; }
+function aiModel_() { var p = aiProvider_(); return p === 'claude' ? setting_('CLAUDE_MODEL') : (setting_('AI_MODEL') || AI_PROVIDERS[p].model); }
+
+function callModel_(system, messages) {
+  var p = aiProvider_();
+  if (p === 'claude') return callClaude_(system, messages);
+  var cfg = AI_PROVIDERS[p];
+  var out = [{ role: 'system', content: system }];
+  messages.forEach(function (m) {
+    if (typeof m.content === 'string') { out.push({ role: m.role, content: m.content }); return; }
+    if (m.role === 'assistant') {
+      var text = m.content.filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n');
+      var calls = m.content.filter(function (b) { return b.type === 'tool_use'; }).map(function (b) {
+        return { id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input || {}) } };
+      });
+      var am = { role: 'assistant', content: text || null };
+      if (calls.length) am.tool_calls = calls;
+      out.push(am);
+      return;
+    }
+    m.content.forEach(function (b) {
+      if (b.type === 'tool_result') out.push({ role: 'tool', tool_call_id: b.tool_use_id, content: String(b.content) });
+      else if (b.type === 'text') out.push({ role: 'user', content: b.text });
+    });
+  });
+  var res = UrlFetchApp.fetch(cfg.url, {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + secret_(cfg.key) },
+    payload: JSON.stringify({
+      model: aiModel_(), max_tokens: 1500, messages: out,
+      tools: TOOLS.map(function (t) { return { type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }; })
+    })
+  });
+  var code = res.getResponseCode();
+  if (code >= 300) throw new Error(cfg.name + ' API ' + code + ': ' + res.getContentText().slice(0, 500));
+  var msg = ((JSON.parse(res.getContentText()).choices || [])[0] || {}).message || {};
+  var content = [];
+  if (msg.content) content.push({ type: 'text', text: String(msg.content) });
+  (msg.tool_calls || []).forEach(function (tc, i) {
+    var input = {};
+    try { input = JSON.parse((tc.function && tc.function.arguments) || '{}') || {}; } catch (err) { /* keep {} */ }
+    content.push({ type: 'tool_use', id: tc.id || ('call_' + i), name: tc.function && tc.function.name, input: input });
+  });
+  return { stop_reason: (msg.tool_calls || []).length ? 'tool_use' : 'end_turn', content: content };
+}
+
 /** One tool-use loop. Returns {reply, updates, handoff, optedOut}. */
 function runAgent_(hist, lead) {
   var role = setting_('BOT_MODE') === 'sales' ? SALES_ROLE : GENTLE_ROLE;
@@ -464,7 +525,7 @@ function runAgent_(hist, lead) {
   var messages = buildMessages_(hist, lead);
   var result = { reply: '', updates: {}, handoff: null, optedOut: false };
   for (var round = 0; round < 5; round++) {
-    var r = callClaude_(system, messages);
+    var r = callModel_(system, messages);
     if (r.stop_reason === 'refusal') {
       result.handoff = { reason: 'AI could not answer', summary: 'Needs a human reply', priority: 'normal' };
       return result;

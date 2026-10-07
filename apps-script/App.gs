@@ -210,10 +210,13 @@ var APP_ACTIONS = {
     var leads = ss_().getSheetByName(SHEETS.leads);
     var triggers = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
     return {
-      keys: { claude: !!props.getProperty('ANTHROPIC_API_KEY'), waToken: !!props.getProperty('WA_ACCESS_TOKEN'),
+      keys: { claude: !!props.getProperty('ANTHROPIC_API_KEY'), ai: !!props.getProperty(aiKeyName_()), waToken: !!props.getProperty('WA_ACCESS_TOKEN'),
               waPhoneId: !!props.getProperty('WA_PHONE_NUMBER_ID') },
       webhookKey: props.getProperty('WEBHOOK_SECRET') || '',
       serviceUrl: (function () { try { return ScriptApp.getService().getUrl() || ''; } catch (err) { return ''; } })(),
+      ai: { provider: aiProvider_(), model: aiModel_(), customModel: setting_('AI_MODEL'),
+            providers: [{ id: 'claude', name: 'Claude (best, paid)' }].concat(Object.keys(AI_PROVIDERS).map(function (k) {
+              return { id: k, name: AI_PROVIDERS[k].name + ' (free tier, testing)', model: AI_PROVIDERS[k].model }; })) },
       waApiUrl: setting_('WA_API_URL'), waApiVersion: setting_('WA_API_VERSION'),
       installed: triggers.indexOf('hourlyCheck') >= 0 && triggers.indexOf('dailySummary') >= 0,
       leads: leads ? Math.max(leads.getLastRow() - 1, 0) : 0, lastWebhook: lastHook, bot: botState_()
@@ -224,7 +227,14 @@ var APP_ACTIONS = {
 
   saveKeys: function (a) {
     var props = PropertiesService.getScriptProperties();
+    if (a.provider !== undefined) {
+      var p = String(a.provider);
+      if (p !== 'claude' && !AI_PROVIDERS[p]) return { error: 'Unknown AI provider' };
+      writeSettings_({ AI_PROVIDER: p, AI_MODEL: String(a.model || '').trim() });
+    }
     var map = { claude: 'ANTHROPIC_API_KEY', waToken: 'WA_ACCESS_TOKEN', waPhoneId: 'WA_PHONE_NUMBER_ID' };
+    if (a.aiKey) a[aiProvider_() === 'claude' ? 'claude' : '_other'] = a.aiKey;
+    if (a._other) map._other = aiKeyName_();
     var saved = [];
     Object.keys(map).forEach(function (k) {
       var v = String(a[k] || '').trim();
@@ -239,10 +249,12 @@ var APP_ACTIONS = {
   },
 
   testClaude: function () {
-    if (!secret_('ANTHROPIC_API_KEY')) return { error: 'Add the Claude API key first' };
-    var r = callClaude_('Reply with one short friendly line in Hinglish confirming you are ready.', [{ role: 'user', content: 'Test' }]);
+    var p = aiProvider_(), name = p === 'claude' ? 'Claude' : AI_PROVIDERS[p].name;
+    if (!secret_(aiKeyName_())) return { error: 'Add the ' + name + ' API key first' };
+    var r = callModel_('Reply with one short friendly line in Hinglish confirming you are ready. Do not use tools.',
+                       [{ role: 'user', content: 'Test' }]);
     var text = (r.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join(' ');
-    return { message: 'Claude works: ' + (text || 'OK').slice(0, 160) };
+    return { message: name + ' works: ' + (text || 'OK').slice(0, 160) };
   },
 
   testWhatsApp: function () {
@@ -281,7 +293,7 @@ var APP_ACTIONS = {
 
 function botState_() {
   return { sendEnabled: sendEnabled_(), botEnabled: botEnabled_(), mode: setting_('BOT_MODE'),
-           salesWhatsapp: String(setting_('SALES_WHATSAPP')), model: setting_('CLAUDE_MODEL') };
+           salesWhatsapp: String(setting_('SALES_WHATSAPP')), model: aiModel_(), provider: aiProvider_() };
 }
 
 function leadLog_(phone, limit) {

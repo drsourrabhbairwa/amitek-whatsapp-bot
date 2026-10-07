@@ -317,7 +317,8 @@ function listOf(rows, emptyText) {
 function botBar(b) {
   var color = !b.sendEnabled ? 'var(--due)' : !b.botEnabled ? 'var(--muted)' : 'var(--ok)';
   var text = !b.sendEnabled ? 'Test mode: nothing is sent on WhatsApp' : !b.botEnabled ? 'Bot is off: the team replies' :
-             'Bot is live (' + (b.mode === 'sales' ? 'sales mode' : 'gentle replies') + ')';
+             'Bot is live (' + (b.mode === 'sales' ? 'sales mode' : 'gentle replies') +
+             (b.provider && b.provider !== 'claude' ? ', testing with ' + b.provider : '') + ')';
   return '<div class="botbar" onclick="showTab(\'settings\')"><span class="dot" style="background:' + color + '"></span>' +
          '<span style="flex:1">' + esc(text) + '</span><span class="info">Change ›</span></div>';
 }
@@ -503,30 +504,51 @@ function check(ok, text, hint) {
 function setupHtml(st) {
   var k = st.keys, base = S.url || st.serviceUrl || '';
   var hook = base && st.webhookKey ? base + '?key=' + st.webhookKey : '';
-  var done = k.claude && k.waToken && k.waPhoneId && st.bot.salesWhatsapp && st.lastWebhook && st.installed;
+  var done = k.ai && k.waToken && k.waPhoneId && st.bot.salesWhatsapp && st.lastWebhook && st.installed;
   return '<h2>Setup' + (done ? ' ✓' : '') + '</h2><div class="card">' +
     check(st.installed, 'Sheet tabs and timers installed', 'Tap "Repair setup" below.') +
-    check(k.claude, 'Claude API key', 'From console.anthropic.com > API keys.') +
+    check(k.ai, (st.ai.provider === 'claude' ? 'Claude' : aiName(st)) + ' API key', AI_HELP[st.ai.provider]) +
     check(k.waToken && k.waPhoneId, 'BlueTick token and Phone Number ID', 'From BlueTick > Bulk Campaign > Create API Campaign > API Details.') +
     check(!!st.bot.salesWhatsapp, 'Salesperson WhatsApp number', 'Add it under WhatsApp bot below.') +
     check(!!st.lastWebhook, st.lastWebhook ? 'WhatsApp messages arriving (last ' + when(st.lastWebhook) + ')' : 'Webhook added in BlueTick',
           'Copy the webhook link below into BlueTick > Webhooks, tick Incoming and Outgoing Messages, then send "hi" to your business number.') +
-    '<div class="form"><label>Claude API key</label><input id="k_claude" type="password" autocomplete="off" placeholder="' + (k.claude ? 'Saved ✓ (type to replace)' : 'sk-ant-…') + '">' +
+    '<div class="form"><label>AI that writes the replies</label><select id="k_provider" onchange="providerChanged()">' +
+    st.ai.providers.map(function (p) { return '<option value="' + p.id + '"' + (p.id === st.ai.provider ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') +
+    '</select><div id="k_aiwarn" class="info" style="margin-top:6px"></div>' +
+    '<label id="k_ailabel">API key</label><input id="k_ai" type="password" autocomplete="off" placeholder="' + (k.ai ? 'Saved ✓ (type to replace)' : 'Paste key') + '">' +
+    '<div id="k_modelbox"><label>Model (blank = default)</label><input id="k_model" type="text" autocomplete="off" value="' + esc(st.ai.customModel) + '"></div>' +
     '<label>BlueTick access token</label><input id="k_token" type="password" autocomplete="off" placeholder="' + (k.waToken ? 'Saved ✓ (type to replace)' : 'Paste token') + '">' +
     '<label>BlueTick Phone Number ID</label><input id="k_phone" type="text" inputmode="numeric" autocomplete="off" placeholder="' + (k.waPhoneId ? 'Saved ✓ (type to replace)' : 'e.g. 1097…') + '">' +
     '<div class="row"><div><label>BlueTick API URL</label><input id="k_url" type="text" value="' + esc(st.waApiUrl) + '"></div>' +
     '<div style="flex:0 0 90px"><label>Version</label><input id="k_ver" type="text" value="' + esc(st.waApiVersion) + '"></div></div>' +
     '<button class="btn" style="width:100%;margin-top:12px" onclick="saveKeys(this)">Save keys</button></div>' +
-    '<div class="row" style="margin-top:10px"><button class="btn soft" onclick="runTest(this,\'testClaude\')">Test Claude</button>' +
+    '<div class="row" style="margin-top:10px"><button class="btn soft" onclick="runTest(this,\'testClaude\')">Test AI</button>' +
     '<button class="btn soft" onclick="runTest(this,\'testWhatsApp\')">Test WhatsApp</button></div>' +
     '<label class="info" style="display:block;margin:14px 0 4px">Webhook link for BlueTick</label>' +
     (hook ? '<div class="hook" id="hookText">' + esc(hook) + '</div><button class="btn ghost" style="width:100%;margin-top:8px" onclick="copyHook()">Copy webhook link</button>'
           : '<div class="info">Open this app with the Web app link to see it.</div>') +
     '<button class="btn ghost" style="width:100%;margin-top:8px" onclick="runTest(this,\'install\')">Repair setup</button></div>';
 }
+var AI_HELP = {
+  claude: 'From console.anthropic.com > API keys.',
+  gemini: 'Free: aistudio.google.com > Get API key.',
+  groq: 'Free: console.groq.com > API Keys.',
+  openrouter: 'Free models: openrouter.ai > Keys.'
+};
+function aiName(st) { var p = st.ai.providers.filter(function (x) { return x.id === st.ai.provider; })[0]; return p ? p.name.replace(/ \(.*/, '') : 'AI'; }
+function providerChanged() {
+  var p = $('k_provider').value, st = S.status;
+  var same = st && p === st.ai.provider;
+  $('k_ai').placeholder = same && st.keys.ai ? 'Saved ✓ (type to replace)' : 'Paste key';
+  $('k_ailabel').textContent = (p === 'claude' ? 'Claude' : $('k_provider').selectedOptions[0].text.replace(/ \(.*/, '')) + ' API key';
+  $('k_modelbox').classList.toggle('hidden', p === 'claude');
+  if (!same) $('k_model').value = '';
+  $('k_aiwarn').textContent = p === 'claude' ? '' : 'For testing only: replies are weaker in Hindi/Hinglish, free tiers have daily limits and may use chats to improve their AI. Switch back to Claude before real customers.';
+  $('k_aiwarn').style.color = 'var(--due)';
+}
 function saveKeys(btn) {
   btn.disabled = true;
-  call('saveKeys', { claude: $('k_claude').value.trim(), waToken: $('k_token').value.trim(), waPhoneId: $('k_phone').value.trim(),
+  call('saveKeys', { provider: $('k_provider').value, model: $('k_model').value.trim(), aiKey: $('k_ai').value.trim(), waToken: $('k_token').value.trim(), waPhoneId: $('k_phone').value.trim(),
                      waApiUrl: $('k_url').value.trim(), waApiVersion: $('k_ver').value.trim() })
     .then(function () { toast('Keys saved'); renderSettings(); }).catch(function (e) { btn.disabled = false; fail(e); });
 }
@@ -556,7 +578,7 @@ function renderSettings() {
   setHeader('Settings', false); loading();
   call('status').then(function (r) {
     if (S.tab !== 'settings' || S.lead) return;
-    var b = r.bot;
+    var b = r.bot; S.status = r;
     $('main').innerHTML = setupHtml(r) + '<h2>WhatsApp bot</h2><div class="card">' +
       '<div class="switch"><div>Send on WhatsApp<small>Off = test mode. Replies are only written to the sheet.</small></div>' +
       '<label class="tog"><input type="checkbox" id="s_send"' + (b.sendEnabled ? ' checked' : '') + '><span></span></label></div>' +
@@ -574,6 +596,7 @@ function renderSettings() {
       '<div class="row"><button class="btn ghost" onclick="changePin()">Change PIN</button>' +
       '<button class="btn ghost" onclick="lock()">Lock app</button></div></div>';
     S.mode = b.mode === 'sales' ? 'sales' : 'gentle';
+    if ($('k_provider')) providerChanged();
   }).catch(fail);
 }
 function mode(m) { S.mode = m; $('m_gentle').classList.toggle('on', m === 'gentle'); $('m_sales').classList.toggle('on', m === 'sales'); }
