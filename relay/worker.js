@@ -53,7 +53,8 @@ export default {
       if (forward) ctx.waitUntil(fetch(forward.toString(), {
         method: 'POST', body: payload, redirect: 'follow',
         headers: { 'Content-Type': 'application/json' }
-      }).catch(() => {}));
+      }).then(async (r) => console.log('script answered', r.status, (await r.text()).slice(0, 200)))
+        .catch((e) => console.log('script unreachable', String(e))));
     };
 
     // any POST without a challenge is passed on as is (the sheet's Webhook Log keeps a copy)
