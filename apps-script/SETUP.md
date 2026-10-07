@@ -1,100 +1,66 @@
-# Setup: Amitek WhatsApp bot on Google Sheets
+# Setup: Amitek WhatsApp bot (Google Sheet + Android app)
 
-Everything runs inside one Google Sheet. No server, no hosting bill. About 20 minutes.
+You need two files, both on the [latest release](https://github.com/drsourrabhbairwa/amitek-whatsapp-bot/releases/latest):
+- `Amitek_Bot.gs`: the whole bot in one file
+- `Amitek-Leads.apk`: the Android app
 
-You need:
-- The sheet file `Amitek_Lead_Bot.xlsx` (shared privately, it is not in this public repo)
-- A Claude API key from https://console.anthropic.com (Settings > API keys)
-- From BlueTick > API Details: the access token and the Phone Number ID
-- The salesperson's WhatsApp number
+And your keys: a Claude API key (console.anthropic.com > API keys), and from BlueTick > Bulk Campaign >
+Create API Campaign > API Details: the access token and the Phone Number ID. Never paste keys into chat or email;
+they go only into the app's Setup screen.
 
-Never paste keys or tokens into chat, email, or this repo. They go only into Script Properties (step 3).
+## 1. The sheet (2 minutes)
+1. Upload `Amitek_Lead_Bot.xlsx` (your leads) to Google Drive, open it, then **File > Save as Google Sheets**.
+   (No lead file? Any new blank Google Sheet works; the tabs are created for you.)
+2. In that Google Sheet: **Extensions > Apps Script**.
+3. Delete everything in `Code.gs`, paste the whole of `Amitek_Bot.gs`, and click **Save**.
 
-## 1. Put the sheet in Google Drive
-1. Upload `Amitek_Lead_Bot.xlsx` to Google Drive.
-2. Open it, then **File > Save as Google Sheets**. Work in this new Google Sheets copy from now on.
-3. You can delete the uploaded .xlsx from Drive.
-
-## 2. Add the script
-1. In the sheet: **Extensions > Apps Script**.
-2. Delete what is in `Code.gs` and paste the whole of [`Code.gs`](Code.gs) from this folder. Save (Ctrl+S).
-3. Click **+ (Add a file) > Script**, name it `App`, and paste [`App.gs`](App.gs).
-4. Click **+ > HTML**, name it `App`, and paste [`App.html`](App.html). Save.
-5. Click **Project Settings** (gear icon), tick **Show "appsscript.json" manifest file in editor**, go back to the editor,
-   open `appsscript.json` and replace it with [`appsscript.json`](appsscript.json). Save.
-
-## 3. Add the secrets
-**Project Settings > Script Properties > Add script property**, one row each:
-
-| Property | Value |
-|---|---|
-| `ANTHROPIC_API_KEY` | your Claude API key |
-| `WA_ACCESS_TOKEN` | BlueTick access token |
-| `WA_PHONE_NUMBER_ID` | BlueTick Phone Number ID |
-
-Save. (`WEBHOOK_SECRET` is created for you in the next step.)
-
-## 4. Run setup once
-1. In the editor, pick `setup` in the function dropdown and click **Run**.
-2. Google asks for permission: **Review permissions**, choose your account, **Advanced > Go to project (unsafe) > Allow**.
+## 2. Publish it (2 minutes)
+1. **Deploy > New deployment**. Click the gear next to "Select type" and pick **Web app**.
+2. Execute as: **Me**. Who has access: **Anyone**. Click **Deploy**.
+3. Google asks for permission: **Authorize access**, pick your account, **Advanced > Go to project (unsafe) > Allow**.
    ("Unsafe" only means Google has not reviewed your own private script.)
-3. This creates the hourly check, the 9 AM summary, a `WEBHOOK_SECRET` and a 6-digit `APP_PIN` (for the phone app)
-   in Script Properties. You can change `APP_PIN` to any number you like.
+4. Copy the **Web app URL** (it ends with `/exec`).
 
-## 5. Fill in Settings
-In the sheet's **Settings** tab:
-- `SALES_WHATSAPP`: salesperson number with 91, e.g. `919812345678`
-- Leave `SEND_ENABLED` as `false` for now (test mode).
-- Check `WA_API_URL` and `WA_API_VERSION` match BlueTick > API Details.
+## 3. The app (1 minute)
+1. Install `Amitek-Leads.apk` on your Android phone (allow "Install unknown apps" when asked).
+2. Open it, paste the Web app URL, and choose a PIN for your team. The app sets up the sheet tabs and timers.
+3. On the **Setup** screen: paste the Claude key, BlueTick token and Phone Number ID, tap **Save keys**,
+   add the salesperson's WhatsApp number, then tap **Test Claude** and **Test WhatsApp**.
+4. Tap **Copy webhook link**. In BlueTick > **Webhooks > Add Webhook**, paste it, tick **Incoming Messages**
+   and **Outgoing Messages**, and save.
+5. Send "hi" to your business number from your own phone. The Setup screen shows ✓ when messages arrive.
+6. The bot starts in test mode (replies are written to the sheet, not sent). When the replies look right,
+   turn on **Send on WhatsApp** in Settings.
 
-## 6. Test without WhatsApp
-In the editor, run `testMessage`. Open the **Messages** tab: you should see a test customer message and the bot's
-reply. Nothing is sent while `SEND_ENABLED` is `false`. If it fails, the error shows in **Executions**.
+Other team members install the same APK and enter the same link and PIN.
+No Android phone? Open the Web app URL in any browser; it is the same app.
 
-## 7. Publish the webhook
-1. **Deploy > New deployment**, type **Web app**.
-   Execute as: **Me**. Who has access: **Anyone**. Click **Deploy** and copy the Web app URL
-   (`https://script.google.com/macros/s/.../exec`).
-2. Your webhook URL is that URL plus `?key=` plus the `WEBHOOK_SECRET` from Script Properties:
-   `https://script.google.com/macros/s/XXXX/exec?key=YOUR_WEBHOOK_SECRET`
-3. In BlueTick > **Webhooks > Add Webhook**: paste the URL, tick **Incoming Messages** and **Outgoing Messages**, save.
-
-## 8. Try it with your own phone
-1. From your personal WhatsApp, message the Amitek business number.
-2. Check the sheet: **Webhook Log** shows the raw message, **Messages** shows the reply the bot would send,
-   **Leads** gets your row.
-3. When the replies look right, set `SEND_ENABLED` to `true`. Message again; now the bot replies on WhatsApp.
-
-## Phone app
-1. On your phone, open the Web app URL from step 7 **without** the `?key=...` part.
-2. Enter the `APP_PIN`.
-3. In Chrome tap **⋮ > Add to Home screen**. It now opens like an app.
-
-What it does:
+## What the app does
 - **Today**: hot leads, overdue follow-ups, customers waiting for a reply, what's coming up.
-- **Lead**: the full WhatsApp chat, Call and WhatsApp buttons, Done / Later / Won / Lost, edit details,
+- **Lead**: the WhatsApp chat, Call and WhatsApp buttons, Done / Later / Won / Lost, edit details,
   change history, and a reply box to answer as the team (the bot then stays quiet for that customer for 12 hours).
   WhatsApp allows typed replies only within 24 hours of the customer's last message.
-- **Leads**: search all leads by name, number or city, filter by status.
-- **Add**: add a walk-in or phone lead.
-- **Settings**: test mode on/off, bot on/off, gentle or sales mode, salesperson number.
+- **Leads**: search by name, number or city, filter by status. **Add**: add a walk-in or phone lead.
+- **Settings**: setup checklist and keys, test mode, bot on/off, gentle or sales mode, salesperson number, PIN.
 
-Share the PIN only with your sales team. After 10 wrong PINs the app locks for an hour.
-Google shows a small "created by a Google Apps Script user" line at the top; that is normal.
+The salesperson also gets WhatsApp alerts (hot leads, unanswered chats, due follow-ups, 9 AM summary) and can
+reply to them with `DONE 98xxxxxxxx`, `LATER 98xxxxxxxx 5`, `WON ...`, `LOST ... reason`, `LIST`, `HELP`.
 
-## Everyday use
-- **Leads** tab is the lead list. **Board** tab shows engaged leads, hot and overdue first (refreshed hourly).
-- **Log** tab records every status / follow-up change and who made it.
-- The salesperson gets WhatsApp alerts for hot leads, unanswered chats and due follow-ups, plus a 9 AM summary,
-  and can reply with:
-  - `DONE 98xxxxxxxx note` - I contacted them (next check in 3 days)
-  - `LATER 98xxxxxxxx 5 note` - follow up in 5 days
-  - `WON 98xxxxxxxx note` / `LOST 98xxxxxxxx reason`
-  - `LIST` - everything pending, `HELP` - this list
-- When someone from the team replies to a customer from the business number, the bot stays quiet for 12 hours.
-- STOP / not interested opts the customer out; START brings them back.
-- **Knowledge** tab is what the bot knows. Edit it any time (add prices here later; it stays private in your sheet).
+The Google Sheet is the database: **Leads**, **Messages**, **Log** (every change and who made it), **Board**,
+**Knowledge** (what the bot knows; edit it any time) and **Settings**.
 
-## Updating the code later
-Paste the new `Code.gs`, `App.gs` and `App.html`, save, then **Deploy > Manage deployments > Edit (pencil) > Version: New version > Deploy**.
-This keeps the same webhook URL.
+## Updating later
+- New script: paste the new `Amitek_Bot.gs`, save, then **Deploy > Manage deployments > Edit (pencil) >
+  Version: New version > Deploy**. The link stays the same.
+- New app: uninstall the old app first, then install the new APK, and enter the link and PIN again.
+  Nothing is lost; all data lives in the sheet.
+
+## Safety
+- After 10 wrong PINs the app locks for an hour. Change the PIN in Settings if someone leaves the team.
+- Keys are stored in the script's private Script Properties. The app can replace them but never shows them.
+- STOP / not interested opts a customer out; the bot never messages them again unless they write START.
+
+## For developers
+Source files are `Code.gs`, `App.gs` and `App.html`; `node apps-script/build.js` makes `dist/Amitek_Bot.gs`.
+Tests: `node apps-script/test/test.js` (and `DIST=1` for the built file). The Android app is in `android/`
+and is built by GitHub Actions on every push.
