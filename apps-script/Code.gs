@@ -513,7 +513,9 @@ function callModel_(system, messages) {
   });
   var res = aiFetch_(cfg.url, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    headers: { Authorization: 'Bearer ' + secret_(cfg.key) },
+    // Gemini's newer keys (AQ.…) are also sent the way Google's own samples do
+    headers: p === 'gemini' ? { Authorization: 'Bearer ' + secret_(cfg.key), 'x-goog-api-key': secret_(cfg.key) }
+                            : { Authorization: 'Bearer ' + secret_(cfg.key) },
     payload: JSON.stringify({
       model: aiModel_(), max_tokens: 1500, messages: out,
       tools: TOOLS.map(function (t) { return { type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }; })
