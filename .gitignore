@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.env
+*.db
+.pytest_cache/
+
+# never commit secrets or lead data (this repo is public)
+.env*
+!.env.example
+*.xlsx
+*.csv
+*.sqlite
+data/

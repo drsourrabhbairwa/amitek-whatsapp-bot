@@ -1,0 +1,59 @@
+services:
+  - type: web
+    name: amitek-whatsapp-bot
+    runtime: python
+    region: singapore
+    plan: starter            # free plan sleeps and would miss/delay WhatsApp replies
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: {name: amitek-bot-db, property: connectionString}
+      - key: CLAUDE_MODEL
+        value: claude-sonnet-5-5
+      - key: WA_API_URL
+        value: https://crmapi.bluetickapi.com/api/meta
+      - key: WA_API_VERSION
+        value: v19.0
+      - key: WA_PHONE_NUMBER_ID
+        sync: false
+      - key: SEND_ENABLED
+        value: "false"
+      - key: BOT_MODE
+        value: gentle          # phase 1: simple polite replies; "sales" = full sales head
+      - key: HOT_LEAD_SLA_HOURS
+        value: "2"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: WA_ACCESS_TOKEN
+        sync: false
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      - key: SALES_WHATSAPP
+        sync: false
+  # Lead tracking: hourly reminders + 9:00 AM IST daily summary to the salesperson
+  - type: cron
+    name: amitek-lead-check
+    runtime: python
+    region: singapore
+    schedule: "0 * * * *"
+    buildCommand: pip install httpx
+    startCommand: python -c "import os,httpx;print(httpx.post(os.environ['APP_URL']+'/cron/'+os.environ['WEBHOOK_SECRET']+'/check',timeout=120).text)"
+    envVars: &cronenv
+      - key: APP_URL
+        sync: false            # e.g. https://amitek-whatsapp-bot.onrender.com
+      - key: WEBHOOK_SECRET
+        fromService: {type: web, name: amitek-whatsapp-bot, envVarKey: WEBHOOK_SECRET}
+  - type: cron
+    name: amitek-daily-summary
+    runtime: python
+    region: singapore
+    schedule: "30 3 * * *"     # 03:30 UTC = 09:00 IST
+    buildCommand: pip install httpx
+    startCommand: python -c "import os,httpx;print(httpx.post(os.environ['APP_URL']+'/cron/'+os.environ['WEBHOOK_SECRET']+'/daily',timeout=120).text)"
+    envVars: *cronenv
+databases:
+  - name: amitek-bot-db
+    region: singapore
+    plan: basic-256mb
