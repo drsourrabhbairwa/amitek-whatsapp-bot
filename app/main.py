@@ -34,6 +34,14 @@ def _check_secret(secret: str) -> None:
         raise HTTPException(status_code=404)
 
 
+@app.on_event("startup")
+def _start_scheduler():
+    import os
+    if os.getenv("ENABLE_SCHEDULER", "true").lower() in ("1", "true", "yes"):
+        from . import scheduler
+        scheduler.start(lambda: service().tracker)
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "sending": settings.send_enabled, "model": settings.claude_model}

@@ -32,6 +32,8 @@ Salesperson WhatsApp <── hot-lead alert
   - 9:00 AM IST daily summary: hot, overdue, due today;
   - the salesperson updates leads by WhatsApp: `DONE 98xxxxxxxx note`, `LATER 98xxxxxxxx 5 note`,
     `WON 98xxxxxxxx`, `LOST 98xxxxxxxx reason`, `LIST`, `HELP`;
+  - the hourly check and daily summary run inside the web server (`app/scheduler.py`); the same jobs can also be
+    triggered with `POST /cron/<WEBHOOK_SECRET>/check` and `/daily`;
   - lead board page: `GET /board/<WEBHOOK_SECRET>` (hot, overdue, waiting reply first).
 - **Safety switch**: `SEND_ENABLED=false` (default) means the bot thinks and logs but sends nothing.
 - Lead sheet download: `GET /leads.csv/<WEBHOOK_SECRET>`.
@@ -45,7 +47,7 @@ pytest -q
 
 Tests use a fake Claude and a fake WhatsApp API; nothing is sent.
 
-## Deploy (Render, ~US$16/month: web service Starter + Postgres basic + 2 small cron jobs)
+## Deploy (Render, ~US$13/month: web service Starter + Postgres basic)
 
 1. Push this folder to a **private** GitHub repo.
 2. Render > New > Blueprint > pick the repo (uses `render.yaml`). Fill the secret env vars:
@@ -55,8 +57,7 @@ Tests use a fake Claude and a fake WhatsApp API; nothing is sent.
    URL `https://<render-app>.onrender.com/webhook/<WEBHOOK_SECRET>`, tick **Incoming Messages** and
    **Outgoing Messages** (others optional).
 5. Dry run: keep `SEND_ENABLED=false`, message the number from your own phone, check Render logs.
-6. Set `APP_URL` on the two cron jobs to the web service URL.
-7. Go live: set `SEND_ENABLED=true`, test again from your own phone, then send the campaign from BlueTick.
+6. Go live: set `SEND_ENABLED=true`, test again from your own phone, then send the campaign from BlueTick.
 
 The salesperson alert is a free-text message, which WhatsApp only delivers if the salesperson messaged the business
 number in the last 24 hours. For reliable alerts, create a Utility template (body with 3 variables: name, phone,

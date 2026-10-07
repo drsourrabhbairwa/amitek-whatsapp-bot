@@ -32,27 +32,6 @@ services:
         generateValue: true
       - key: SALES_WHATSAPP
         sync: false
-  # Lead tracking: hourly reminders + 9:00 AM IST daily summary to the salesperson
-  - type: cron
-    name: amitek-lead-check
-    runtime: python
-    region: singapore
-    schedule: "0 * * * *"
-    buildCommand: pip install httpx
-    startCommand: python -c "import os,httpx;print(httpx.post(os.environ['APP_URL']+'/cron/'+os.environ['WEBHOOK_SECRET']+'/check',timeout=120).text)"
-    envVars: &cronenv
-      - key: APP_URL
-        sync: false            # e.g. https://amitek-whatsapp-bot.onrender.com
-      - key: WEBHOOK_SECRET
-        fromService: {type: web, name: amitek-whatsapp-bot, envVarKey: WEBHOOK_SECRET}
-  - type: cron
-    name: amitek-daily-summary
-    runtime: python
-    region: singapore
-    schedule: "30 3 * * *"     # 03:30 UTC = 09:00 IST
-    buildCommand: pip install httpx
-    startCommand: python -c "import os,httpx;print(httpx.post(os.environ['APP_URL']+'/cron/'+os.environ['WEBHOOK_SECRET']+'/daily',timeout=120).text)"
-    envVars: *cronenv
 databases:
   - name: amitek-bot-db
     region: singapore

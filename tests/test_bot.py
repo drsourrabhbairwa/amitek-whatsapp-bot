@@ -309,3 +309,11 @@ def test_board_and_cron_endpoints(monkeypatch, tmp_path):
     assert "Ramesh &lt;b&gt;" in html and "Hot" in html
     assert c.post("/cron/s3cret/check").json() == {"unanswered": 0}
     assert c.post("/cron/wrong/check").status_code == 404
+
+
+def test_next_daily_summary_time():
+    from datetime import datetime
+    from app.scheduler import next_daily
+    from app.tracker import IST
+    assert next_daily(datetime(2026, 10, 7, 8, 0, tzinfo=IST)).hour == 9
+    assert next_daily(datetime(2026, 10, 7, 10, 0, tzinfo=IST)).day == 8
