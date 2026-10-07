@@ -225,7 +225,8 @@ function doPost(e) {
 
 function doGet(e) {
   var p = (e && e.parameter) || {};
-  if (p['hub.challenge']) return ContentService.createTextOutput(p['hub.challenge']);  // webhook verification
+  var ch = p['hub.challenge'] || p.challange || p.challenge;  // webhook verification (BlueTick: ?echo=true&challange=…)
+  if (ch) return ContentService.createTextOutput(ch);
   return appPage_();  // the phone app (App.gs)
 }
 

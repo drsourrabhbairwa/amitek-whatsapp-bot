@@ -18,7 +18,7 @@ const SCRIPT_RE = /^https:\/\/script\.google\.com\/(macros|a\/macros\/[\w.-]+)\/
 // Find a challenge anywhere: hub.challenge / challenge / hub_challenge, even when the sender glued
 // its own "?…" onto our link (which hides it inside the previous parameter).
 function findChallenge(text) {
-  const m = /(?:^|[?&])(?:hub[._])?challenge=([^&#]*)/i.exec(text || '');
+  const m = /(?:^|[?&])(?:hub[._])?chall[ae]nge=([^&#]*)/i.exec(text || '');  // BlueTick spells it "challange"
   if (!m) return '';
   try { return decodeURIComponent(m[1].replace(/\+/g, ' ')); } catch (e) { return m[1]; }
 }
@@ -27,7 +27,7 @@ function bodyChallenge(body) {
   if (!body) return '';
   try {
     const j = JSON.parse(body);
-    const c = j && (j.challenge || j['hub.challenge'] || j.hub_challenge || (j.hub && j.hub.challenge) ||
+    const c = j && (j.challenge || j.challange || j['hub.challenge'] || j.hub_challenge || (j.hub && j.hub.challenge) ||
       (j.data && j.data.challenge));
     if (c !== undefined && c !== null && typeof c !== 'object') return String(c);
   } catch (e) { /* not JSON */ }
