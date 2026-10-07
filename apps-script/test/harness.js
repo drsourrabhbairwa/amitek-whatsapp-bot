@@ -52,7 +52,8 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: t => { const o = { text: t, setMimeType: () => o }; return o; } },
     Utilities: {
       formatDate: (d, tz, f) => new Date(d).toISOString(),
-      getUuid: () => '1234-5678-uuid'
+      getUuid: () => '1234-5678-uuid',
+      sleep: () => {}
     },
     ScriptApp: {
       getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/TEST/exec' }),

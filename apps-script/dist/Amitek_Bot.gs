@@ -445,8 +445,20 @@ function buildMessages_(hist, lead) {
   return msgs;
 }
 
+/** AI servers are sometimes busy (429/5xx); wait and try again a few times before giving up. */
+function aiFetch_(url, opts) {
+  var res;
+  for (var i = 0; i < 4; i++) {
+    res = UrlFetchApp.fetch(url, opts);
+    var c = res.getResponseCode();
+    if (c !== 429 && c !== 500 && c !== 502 && c !== 503 && c !== 504 && c !== 529) return res;
+    Utilities.sleep(2000 * (i + 1));
+  }
+  return res;
+}
+
 function callClaude_(system, messages) {
-  var res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+  var res = aiFetch_('https://api.anthropic.com/v1/messages', {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     headers: {
       'x-api-key': secret_('ANTHROPIC_API_KEY'),
@@ -506,7 +518,7 @@ function callModel_(system, messages) {
       else if (b.type === 'text') out.push({ role: 'user', content: b.text });
     });
   });
-  var res = UrlFetchApp.fetch(cfg.url, {
+  var res = aiFetch_(cfg.url, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     headers: { Authorization: 'Bearer ' + secret_(cfg.key) },
     payload: JSON.stringify({
