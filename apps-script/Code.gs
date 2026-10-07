@@ -194,6 +194,10 @@ function history_(phone, limit) {
 
 // ===================================================================== webhook
 function doPost(e) {
+  var body = (e && e.postData && e.postData.contents) || '';
+  if (body.indexOf('"_app"') >= 0 && body.indexOf('"_app"') < 20) {  // the phone app, not WhatsApp
+    try { return appHttp_(JSON.parse(body)); } catch (err) { /* not the app after all */ }
+  }
   var key = (e && e.parameter && e.parameter.key) || '';
   if (!secret_('WEBHOOK_SECRET') || key !== secret_('WEBHOOK_SECRET')) {
     return ContentService.createTextOutput('not found');
@@ -282,8 +286,8 @@ function parseWebhook_(payload) {
 
 // ===================================================================== WhatsApp (BlueTick = Meta Cloud API format)
 var lastWaError_ = '';
-function waPost_(body) {
-  if (!sendEnabled_()) {
+function waPost_(body, force) {
+  if (!force && !sendEnabled_()) {
     console.log('SEND_ENABLED is false, not sending: ' + JSON.stringify(body).slice(0, 300));
     return null;
   }
@@ -782,7 +786,6 @@ function setup() {
 
   var props = PropertiesService.getScriptProperties();
   if (!props.getProperty('WEBHOOK_SECRET')) props.setProperty('WEBHOOK_SECRET', Utilities.getUuid().replace(/-/g, ''));
-  if (!props.getProperty('APP_PIN')) props.setProperty('APP_PIN', String(Math.floor(100000 + Math.random() * 900000)));
 
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (['hourlyCheck', 'dailySummary'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
@@ -791,8 +794,7 @@ function setup() {
   ScriptApp.newTrigger('dailySummary').timeBased().atHour(settingNum_('DAILY_SUMMARY_HOUR')).everyDays(1)
       .inTimezone('Asia/Kolkata').create();
   refreshBoard_();
-  console.log('Setup done. Webhook secret and phone app PIN are in Project Settings > Script Properties ' +
-              '(WEBHOOK_SECRET, APP_PIN).');
+  console.log('Setup done. Open the Amitek app, paste the web app link and choose a PIN.');
 }
 
 /** Test from the editor without WhatsApp: pretend a customer wrote a message (sending stays off if SEND_ENABLED=false). */

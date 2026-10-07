@@ -6,7 +6,7 @@ const BUSINESS = '910000000001';
 const SALES = '919800000001';
 const CUST = '919811112222';
 const SECRET = 'testsecret';
-const BASE = { props: { WEBHOOK_SECRET: SECRET, ANTHROPIC_API_KEY: 'k', WA_ACCESS_TOKEN: 't', WA_PHONE_NUMBER_ID: 'phone-id-test' },
+const BASE = { props: { WEBHOOK_SECRET: SECRET, ANTHROPIC_API_KEY: 'k', WA_ACCESS_TOKEN: 't', WA_PHONE_NUMBER_ID: 'phone-id-test', APP_PIN: '123456' },
                settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES } };
 
 let n = 0;
@@ -219,9 +219,16 @@ const tests = {
     assert(env.claudeCalls[0].body.system[0].text.includes('senior sales head'));
   }
   ,
-  'app: PIN required, wrong PINs lock out'() {
+  'app: first connection chooses the PIN and installs; then PIN required, wrong PINs lock out'() {
+    const fresh = load({ props: {} });
+    fresh.triggers.splice(0);  // as if setup() never ran
+    assert.strictEqual(JSON.parse(fresh.ctx.api('', 'dashboard', '{}')).error, 'NOPIN');
+    assert(JSON.parse(fresh.ctx.api('', 'claim', '{"newPin":"12"}')).error.includes('4 to 8'));
+    assert.strictEqual(JSON.parse(fresh.ctx.api('', 'claim', '{"newPin":"4321"}')).message, 'Connected');
+    assert.strictEqual(fresh.props.APP_PIN, '4321');
+    assert.strictEqual(fresh.triggers.length, 2, 'claim installed the timers');
+    assert.strictEqual(JSON.parse(fresh.ctx.api('9999', 'claim', '{"newPin":"9999"}')).error, 'PIN', 'cannot re-claim');
     const env = load(BASE);
-    assert(/^\d{6}$/.test(env.props.APP_PIN), 'setup made a 6-digit PIN');
     assert.strictEqual(JSON.parse(env.ctx.api('nope', 'dashboard', '{}')).error, 'PIN');
     for (let i = 0; i < 10; i++) env.ctx.api('nope', 'dashboard', '{}');
     assert(JSON.parse(env.ctx.api(env.props.APP_PIN, 'dashboard', '{}')).error.includes('Too many'));
@@ -288,8 +295,34 @@ const tests = {
     const env = load(BASE);
     assert.strictEqual(env.ctx.doGet({ parameter: {} }).file, 'App');
     assert.strictEqual(env.ctx.doGet({ parameter: { 'hub.challenge': '42' } }).text, '42');
+  },
+  'app over HTTP (Android app): status, keys, tests'() {
+    const env = load(Object.assign({}, BASE, { props: { WEBHOOK_SECRET: SECRET, APP_PIN: '123456' }, claude: [say('Ji, main ready hoon!')] }));
+    const http = (action, args, pin = '123456') => JSON.parse(env.ctx.doPost({ parameter: {}, postData: {
+      contents: JSON.stringify({ _app: 1, pin, action, args }) } }).text);
+    assert.strictEqual(http('dashboard', {}, '000').error, 'PIN');
+    let st = http('status');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(st.keys)), { claude: false, waToken: false, waPhoneId: false });
+    assert.strictEqual(st.webhookKey, SECRET); assert.strictEqual(st.installed, true);
+    assert.strictEqual(http('testClaude').error, 'Add the Claude API key first');
+    http('saveKeys', { claude: 'sk-test', waToken: 'tok', waPhoneId: '123', waApiVersion: 'v20.0' });
+    st = http('status');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(st.keys)), { claude: true, waToken: true, waPhoneId: true });
+    assert.strictEqual(st.waApiVersion, 'v20.0');
+    assert(!JSON.stringify(st).includes('sk-test'), 'secrets are never sent back');
+    http('saveKeys', { claude: '' });
+    assert.strictEqual(env.props.ANTHROPIC_API_KEY, 'sk-test', 'blank field keeps the old key');
+    assert(http('testClaude').message.includes('main ready'));
+    http('saveSettings', { SEND_ENABLED: 'false' });
+    assert(http('testWhatsApp').message.includes(SALES), 'WhatsApp test works even in test mode');
+    assert.strictEqual(env.sent.pop().url, 'https://crmapi.bluetickapi.com/api/meta/v20.0/123/messages');
+    assert.strictEqual(http('changePin', { newPin: '7777' }).message, 'PIN changed');
+    assert.strictEqual(http('status', {}, '7777').bot.sendEnabled, false);
+    const r = env.ctx.doPost({ parameter: { key: SECRET }, postData: { contents: JSON.stringify(payload([text(CUST, 'what is "_app"')])) } });
+    assert.strictEqual(r.text, 'ok', 'a WhatsApp webhook mentioning _app is still a webhook');
   }
 };
+
 
 
 let failed = 0;

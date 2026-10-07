@@ -11,3 +11,10 @@ __pycache__/
 *.csv
 *.sqlite
 data/
+
+# Android build output (the page is copied in at build time from apps-script/App.html)
+android/.gradle/
+android/build/
+android/app/build/
+android/app/src/main/assets/www/
+android/local.properties

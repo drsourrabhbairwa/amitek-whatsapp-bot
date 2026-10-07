@@ -1,11 +1,12 @@
 /**
- * Phone app for managing leads and the bot. Open the web app URL (without ?key=) on a phone and
- * use Chrome's "Add to Home screen". Every call needs APP_PIN from Script Properties.
+ * Phone app API, used by the Android app (HTTP POST to the web app URL) and by the browser version
+ * (web app URL opened without ?key=). Every call needs the app PIN (Script Property APP_PIN); the first
+ * app that connects chooses it.
  */
 
 function appPage_() {
-  return HtmlService.createHtmlOutputFromFile('App')
-      .setTitle('Amitek Leads')
+  var out = typeof APP_HTML !== 'undefined' ? HtmlService.createHtmlOutput(APP_HTML) : HtmlService.createHtmlOutputFromFile('App');
+  return out.setTitle('Amitek Leads')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
 }
 
@@ -17,13 +18,22 @@ function api(pin, action, argsJson) {
   var cache = CacheService.getScriptCache();
   var fails = Number(cache.get('pin_fails') || 0);
   if (fails >= 10) return JSON.stringify({ error: 'Too many wrong PINs. Try again in an hour.' });
-  var real = secret_('APP_PIN');
-  if (!real || String(pin) !== real) {
-    cache.put('pin_fails', String(fails + 1), 3600);
-    return JSON.stringify({ error: 'PIN', message: real ? 'Wrong PIN' : 'APP_PIN is not set. Run setup() first.' });
-  }
   var args = {};
   try { args = JSON.parse(argsJson || '{}'); } catch (err) { /* empty */ }
+  var real = secret_('APP_PIN');
+  if (!real) {
+    // First connection: this app chooses the PIN and installs the sheet tabs and timers.
+    if (action !== 'claim') return JSON.stringify({ error: 'NOPIN', message: 'Choose a PIN to finish setup' });
+    var np = String(args.newPin || '');
+    if (!/^\d{4,8}$/.test(np)) return JSON.stringify({ error: 'PIN must be 4 to 8 digits' });
+    PropertiesService.getScriptProperties().setProperty('APP_PIN', np);
+    try { setup(); } catch (err) { return JSON.stringify({ error: 'PIN saved, but setup failed: ' + err.message }); }
+    return JSON.stringify({ message: 'Connected' });
+  }
+  if (String(pin) !== real) {
+    cache.put('pin_fails', String(fails + 1), 3600);
+    return JSON.stringify({ error: 'PIN', message: 'Wrong PIN' });
+  }
   var lock = LockService.getScriptLock();
   lock.waitLock(25000);
   try {
@@ -190,19 +200,81 @@ var APP_ACTIONS = {
 
   settings: function () { return { bot: botState_() }; },
 
+  claim: function () { return { message: 'Already set up' }; },
+
+  /** Everything the setup screen needs. Secret values are never sent back, only whether they are set. */
+  status: function () {
+    var props = PropertiesService.getScriptProperties();
+    var raw = ss_().getSheetByName(SHEETS.raw);
+    var lastHook = raw && raw.getLastRow() > 1 ? iso_(raw.getRange(raw.getLastRow(), 1).getValues()[0][0]) : '';
+    var leads = ss_().getSheetByName(SHEETS.leads);
+    var triggers = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
+    return {
+      keys: { claude: !!props.getProperty('ANTHROPIC_API_KEY'), waToken: !!props.getProperty('WA_ACCESS_TOKEN'),
+              waPhoneId: !!props.getProperty('WA_PHONE_NUMBER_ID') },
+      webhookKey: props.getProperty('WEBHOOK_SECRET') || '',
+      serviceUrl: (function () { try { return ScriptApp.getService().getUrl() || ''; } catch (err) { return ''; } })(),
+      waApiUrl: setting_('WA_API_URL'), waApiVersion: setting_('WA_API_VERSION'),
+      installed: triggers.indexOf('hourlyCheck') >= 0 && triggers.indexOf('dailySummary') >= 0,
+      leads: leads ? Math.max(leads.getLastRow() - 1, 0) : 0, lastWebhook: lastHook, bot: botState_()
+    };
+  },
+
+  install: function () { setup(); return { message: 'Sheet tabs and timers are ready' }; },
+
+  saveKeys: function (a) {
+    var props = PropertiesService.getScriptProperties();
+    var map = { claude: 'ANTHROPIC_API_KEY', waToken: 'WA_ACCESS_TOKEN', waPhoneId: 'WA_PHONE_NUMBER_ID' };
+    var saved = [];
+    Object.keys(map).forEach(function (k) {
+      var v = String(a[k] || '').trim();
+      if (v) { props.setProperty(map[k], v); saved.push(k); }
+    });
+    var s = {};
+    if (a.waApiUrl) s.WA_API_URL = String(a.waApiUrl).trim();
+    if (a.waApiVersion) s.WA_API_VERSION = String(a.waApiVersion).trim();
+    if (Object.keys(s).length) writeSettings_(s);
+    if (saved.length) logChange_('', 'app', 'Keys updated: ' + saved.join(', '));
+    return { message: 'Saved' };
+  },
+
+  testClaude: function () {
+    if (!secret_('ANTHROPIC_API_KEY')) return { error: 'Add the Claude API key first' };
+    var r = callClaude_('Reply with one short friendly line in Hinglish confirming you are ready.', [{ role: 'user', content: 'Test' }]);
+    var text = (r.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join(' ');
+    return { message: 'Claude works: ' + (text || 'OK').slice(0, 160) };
+  },
+
+  testWhatsApp: function () {
+    var to = normPhone_(setting_('SALES_WHATSAPP'));
+    if (!to) return { error: 'Add the salesperson WhatsApp number in Settings first' };
+    if (!secret_('WA_ACCESS_TOKEN') || !secret_('WA_PHONE_NUMBER_ID')) return { error: 'Add the BlueTick token and Phone Number ID first' };
+    lastWaError_ = '';
+    var id = waPost_({ messaging_product: 'whatsapp', recipient_type: 'individual', to: to, type: 'text',
+                       text: { body: '✅ Amitek bot is connected to WhatsApp.' } }, true);
+    if (!id) return { error: /131047|re-engage/i.test(lastWaError_) ?
+        'Token works, but WhatsApp needs the salesperson to message the business number first (24-hour rule). Send "hi" from that phone and test again.' :
+        'WhatsApp test failed: ' + lastWaError_ };
+    return { message: 'Test message sent to +' + to };
+  },
+
+  changePin: function (a) {
+    var np = String(a.newPin || '');
+    if (!/^\d{4,8}$/.test(np)) return { error: 'PIN must be 4 to 8 digits' };
+    PropertiesService.getScriptProperties().setProperty('APP_PIN', np);
+    return { message: 'PIN changed' };
+  },
+
   saveSettings: function (a) {
-    var sh = sheet_(SHEETS.settings);
-    var rows = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 1), 1).getValues();
+    var s = {};
     Object.keys(a).forEach(function (k) {
       if (APP_SETTINGS.indexOf(k) < 0) return;
       var v = String(a[k]);
       if (k === 'BOT_MODE' && ['gentle', 'sales'].indexOf(v) < 0) return;
       if (k === 'SALES_WHATSAPP') v = v ? normPhone_(v) : '';
-      var i = rows.map(function (r) { return r[0]; }).indexOf(k);
-      if (i >= 0) sh.getRange(i + 2, 2).setValue(v); else sh.appendRow([k, v, '']);
-      logChange_('', 'app', 'Setting ' + k + ' -> ' + v);
+      s[k] = v;
     });
-    settingsCache_ = null;
+    writeSettings_(s);
     return { message: 'Saved', bot: botState_() };
   }
 };
@@ -223,4 +295,21 @@ function leadLog_(phone, limit) {
     if (String(rows[i][1]) === phone) out.push({ time: iso_(rows[i][0]), actor: String(rows[i][2]), change: String(rows[i][3]) });
   }
   return out;
+}
+
+function writeSettings_(s) {
+  var sh = sheet_(SHEETS.settings);
+  var names = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().map(function (r) { return r[0]; }) : [];
+  Object.keys(s).forEach(function (k) {
+    var i = names.indexOf(k);
+    if (i >= 0) sh.getRange(i + 2, 2).setValue(s[k]); else { sh.appendRow([k, s[k], '']); names.push(k); }
+    logChange_('', 'app', 'Setting ' + k + ' -> ' + s[k]);
+  });
+  settingsCache_ = null;
+}
+
+/** HTTP version of api() for the Android app: POST {"_app":1,"pin":..,"action":..,"args":{..}} as text/plain. */
+function appHttp_(body) {
+  var out = api(body.pin, body.action, JSON.stringify(body.args || {}));
+  return ContentService.createTextOutput(out).setMimeType(ContentService.MimeType.JSON);
 }

@@ -119,6 +119,13 @@
   .pin .logo { width: 60px; height: 60px; border-radius: 16px; background: var(--brand); color: #fff; display: grid; place-items: center;
     font-size: 28px; font-weight: 700; margin: 0 auto 14px; }
   .pin input { text-align: center; font-size: 22px; letter-spacing: .3em; margin: 16px 0 10px; }
+  .pin input::placeholder { letter-spacing: normal; font-size: 15px; }
+  .step { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; font-size: 14px; }
+  .step small { display: block; color: var(--muted); font-size: 12px; }
+  .ck { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line); flex: none; display: grid; place-items: center;
+    font-size: 12px; font-weight: 700; color: #fff; margin-top: 1px; }
+  .ck.ok { background: var(--ok); border-color: var(--ok); }
+  .hook { font: 12px/1.4 ui-monospace, Menlo, monospace; background: var(--grey-soft); border-radius: 8px; padding: 10px; word-break: break-all; user-select: all; }
   .loading { text-align: center; color: var(--muted); padding: 30px 0; }
 </style>
 </head>
@@ -127,9 +134,15 @@
 <div id="pinView" class="pin hidden">
   <div class="logo">A</div>
   <div style="font-size:18px;font-weight:600">Amitek Leads</div>
-  <div class="info">Enter your app PIN</div>
-  <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="12">
-  <button class="btn" style="width:100%" onclick="submitPin()">Open</button>
+  <div id="urlBox" class="hidden" style="text-align:left">
+    <div class="info" style="margin-top:14px">Apps Script web app link</div>
+    <input id="urlInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+           placeholder="https://script.google.com/macros/s/…/exec" style="margin:6px 0 0;letter-spacing:0;font-size:14px;text-align:left">
+  </div>
+  <div id="pinLabel" class="info" style="margin-top:14px">Enter your app PIN</div>
+  <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="PIN">
+  <input id="pin2Input" class="hidden" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Repeat PIN" style="margin-top:0">
+  <button id="pinBtn" class="btn" style="width:100%" onclick="submitPin()">Open</button>
   <div id="pinErr" class="info" style="color:var(--hot);margin-top:10px"></div>
 </div>
 
@@ -159,14 +172,42 @@ function store(k, v) { try { if (v === undefined) return localStorage.getItem(k)
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function $(id) { return document.getElementById(id); }
 
+var GAS = !!(window.google && google.script && google.script.run);
+function handle(r, resolve, reject) {
+  if (r && r.error === 'PIN') { lock(r.message); return reject(new Error(r.message)); }
+  if (r && r.error === 'NOPIN') { askNewPin(); return reject(new Error(r.message)); }
+  if (r && r.error) return reject(new Error(r.error));
+  resolve(r);
+}
+// In the Android app, requests go through the app's native bridge (no browser CORS limits).
+var nativeSeq = 0, nativeCbs = {};
+window.__nativeDone = function (id, ok, text) {
+  var cb = nativeCbs[id]; delete nativeCbs[id];
+  if (cb) { if (ok) cb.res(text); else cb.rej(new Error(text)); }
+};
+function post(url, body) {
+  if (window.AmitekNative) {
+    return new Promise(function (res, rej) { var id = String(++nativeSeq); nativeCbs[id] = { res: res, rej: rej }; AmitekNative.post(id, url, body); });
+  }
+  return fetch(url, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
+    .then(function (res) { return res.text(); });
+}
 function call(action, args) {
+  if (!GAS) {
+    if (!S.url) { lock(); return Promise.reject(new Error('Add the Apps Script link')); }
+    return post(S.url, JSON.stringify({ _app: 1, pin: S.pin, action: action, args: args || {} }))
+      .then(function (txt) {
+        var r; try { r = JSON.parse(txt); } catch (e) {
+          throw new Error(/<html/i.test(txt) ? 'This link did not answer like the Amitek script. Check it is the Web app link, deployed for "Anyone".' : 'Bad response');
+        }
+        return new Promise(function (res, rej) { handle(r, res, rej); });
+      }, function () { throw new Error('Cannot reach the script. Check the link and your internet.'); });
+  }
   return new Promise(function (resolve, reject) {
     google.script.run
       .withSuccessHandler(function (txt) {
         var r; try { r = JSON.parse(txt); } catch (e) { return reject(new Error('Bad response')); }
-        if (r && r.error === 'PIN') { lock(r.message); return reject(new Error(r.message)); }
-        if (r && r.error) return reject(new Error(r.error));
-        resolve(r);
+        handle(r, resolve, reject);
       })
       .withFailureHandler(function (e) { reject(e instanceof Error ? e : new Error(String(e && e.message || e))); })
       .api(S.pin, action, JSON.stringify(args || {}));
@@ -195,20 +236,52 @@ function when(iso) {
 
 // ---------------------------------------------------------------- PIN
 function lock(msg) {
-  S.pin = ''; store('amitek_pin', null);
+  S.pin = ''; S.claiming = false; store('amitek_pin', null);
   $('appView').classList.add('hidden'); $('pinView').classList.remove('hidden');
-  $('pinErr').textContent = msg || ''; $('pinInput').value = ''; $('pinInput').focus();
+  $('urlBox').classList.toggle('hidden', GAS); $('urlInput').value = S.url || '';
+  $('pinLabel').textContent = GAS ? 'Enter your app PIN' : 'App PIN'; $('pin2Input').classList.add('hidden');
+  $('pinBtn').textContent = GAS ? 'Open' : 'Connect';
+  $('pinErr').textContent = msg || ''; $('pinInput').value = '';
+  (GAS || S.url ? $('pinInput') : $('urlInput')).focus();
+}
+function askNewPin() {
+  S.claiming = true;
+  $('appView').classList.add('hidden'); $('pinView').classList.remove('hidden');
+  $('pinLabel').textContent = 'First time here: choose a PIN (4 to 8 digits) for your team';
+  $('pin2Input').classList.remove('hidden'); $('pinBtn').textContent = 'Set PIN and finish setup';
+  $('pinInput').value = ''; $('pin2Input').value = ''; $('pinInput').focus();
+}
+function cleanUrl(u) {
+  u = (u || '').trim().replace(/\?.*$/, '');
+  return u;
 }
 function submitPin() {
-  var p = $('pinInput').value.trim(); if (!p) return;
-  S.pin = p; $('pinErr').textContent = '';
+  if (!GAS) {
+    var u = cleanUrl($('urlInput').value);
+    if (!/^https?:\/\/.+\/exec$/.test(u)) { $('pinErr').textContent = 'Paste the Web app link from Apps Script. It ends with /exec.'; return; }
+    S.url = u; store('amitek_url', u);
+  }
+  var p = $('pinInput').value.trim();
+  $('pinErr').textContent = '';
+  if (S.claiming) {
+    if (!/^\d{4,8}$/.test(p)) { $('pinErr').textContent = 'PIN must be 4 to 8 digits'; return; }
+    if (p !== $('pin2Input').value.trim()) { $('pinErr').textContent = 'The two PINs do not match'; return; }
+    $('pinBtn').disabled = true; $('pinErr').textContent = 'Setting up the sheet…';
+    return call('claim', { newPin: p }).then(function () {
+      S.claiming = false; S.pin = p; store('amitek_pin', p); $('pinBtn').disabled = false;
+      $('pinView').classList.add('hidden'); $('appView').classList.remove('hidden');
+      toast('Connected. Now add your keys.'); showTab('settings');
+    }).catch(function (e) { $('pinBtn').disabled = false; $('pinErr').textContent = e.message; });
+  }
+  S.pin = p;
+  $('pinBtn').disabled = true;
   call('settings').then(function () {
-    store('amitek_pin', p);
+    $('pinBtn').disabled = false; store('amitek_pin', p);
     $('pinView').classList.add('hidden'); $('appView').classList.remove('hidden');
     showTab('today');
-  }).catch(function (e) { $('pinErr').textContent = e.message; });
+  }).catch(function (e) { $('pinBtn').disabled = false; if (!S.claiming) $('pinErr').textContent = e.message; });
 }
-$('pinInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitPin(); });
+['pinInput', 'pin2Input', 'urlInput'].forEach(function (id) { $(id).addEventListener('keydown', function (e) { if (e.key === 'Enter') submitPin(); }); });
 
 // ---------------------------------------------------------------- navigation
 function setHeader(title, back) {
@@ -423,12 +496,68 @@ function addLead(btn) {
 }
 
 // ---------------------------------------------------------------- Settings
+function check(ok, text, hint) {
+  return '<div class="step"><span class="ck ' + (ok ? 'ok' : '') + '">' + (ok ? '✓' : '') + '</span><div>' + esc(text) +
+         (hint && !ok ? '<small>' + hint + '</small>' : '') + '</div></div>';
+}
+function setupHtml(st) {
+  var k = st.keys, base = S.url || st.serviceUrl || '';
+  var hook = base && st.webhookKey ? base + '?key=' + st.webhookKey : '';
+  var done = k.claude && k.waToken && k.waPhoneId && st.bot.salesWhatsapp && st.lastWebhook && st.installed;
+  return '<h2>Setup' + (done ? ' ✓' : '') + '</h2><div class="card">' +
+    check(st.installed, 'Sheet tabs and timers installed', 'Tap "Repair setup" below.') +
+    check(k.claude, 'Claude API key', 'From console.anthropic.com > API keys.') +
+    check(k.waToken && k.waPhoneId, 'BlueTick token and Phone Number ID', 'From BlueTick > Bulk Campaign > Create API Campaign > API Details.') +
+    check(!!st.bot.salesWhatsapp, 'Salesperson WhatsApp number', 'Add it under WhatsApp bot below.') +
+    check(!!st.lastWebhook, st.lastWebhook ? 'WhatsApp messages arriving (last ' + when(st.lastWebhook) + ')' : 'Webhook added in BlueTick',
+          'Copy the webhook link below into BlueTick > Webhooks, tick Incoming and Outgoing Messages, then send "hi" to your business number.') +
+    '<div class="form"><label>Claude API key</label><input id="k_claude" type="password" autocomplete="off" placeholder="' + (k.claude ? 'Saved ✓ (type to replace)' : 'sk-ant-…') + '">' +
+    '<label>BlueTick access token</label><input id="k_token" type="password" autocomplete="off" placeholder="' + (k.waToken ? 'Saved ✓ (type to replace)' : 'Paste token') + '">' +
+    '<label>BlueTick Phone Number ID</label><input id="k_phone" type="text" inputmode="numeric" autocomplete="off" placeholder="' + (k.waPhoneId ? 'Saved ✓ (type to replace)' : 'e.g. 1097…') + '">' +
+    '<div class="row"><div><label>BlueTick API URL</label><input id="k_url" type="text" value="' + esc(st.waApiUrl) + '"></div>' +
+    '<div style="flex:0 0 90px"><label>Version</label><input id="k_ver" type="text" value="' + esc(st.waApiVersion) + '"></div></div>' +
+    '<button class="btn" style="width:100%;margin-top:12px" onclick="saveKeys(this)">Save keys</button></div>' +
+    '<div class="row" style="margin-top:10px"><button class="btn soft" onclick="runTest(this,\'testClaude\')">Test Claude</button>' +
+    '<button class="btn soft" onclick="runTest(this,\'testWhatsApp\')">Test WhatsApp</button></div>' +
+    '<label class="info" style="display:block;margin:14px 0 4px">Webhook link for BlueTick</label>' +
+    (hook ? '<div class="hook" id="hookText">' + esc(hook) + '</div><button class="btn ghost" style="width:100%;margin-top:8px" onclick="copyHook()">Copy webhook link</button>'
+          : '<div class="info">Open this app with the Web app link to see it.</div>') +
+    '<button class="btn ghost" style="width:100%;margin-top:8px" onclick="runTest(this,\'install\')">Repair setup</button></div>';
+}
+function saveKeys(btn) {
+  btn.disabled = true;
+  call('saveKeys', { claude: $('k_claude').value.trim(), waToken: $('k_token').value.trim(), waPhoneId: $('k_phone').value.trim(),
+                     waApiUrl: $('k_url').value.trim(), waApiVersion: $('k_ver').value.trim() })
+    .then(function () { toast('Keys saved'); renderSettings(); }).catch(function (e) { btn.disabled = false; fail(e); });
+}
+function runTest(btn, action) {
+  var t = btn.textContent; btn.disabled = true; btn.textContent = 'Working…';
+  call(action).then(function (r) { btn.disabled = false; btn.textContent = t; toast(r.message); if (action === 'install') renderSettings(); })
+    .catch(function (e) { btn.disabled = false; btn.textContent = t; fail(e); });
+}
+function copyHook() {
+  var t = $('hookText').textContent;
+  function fallback() { var r = document.createRange(); r.selectNodeContents($('hookText')); var s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    try { document.execCommand('copy'); toast('Copied'); } catch (e) { toast('Select the link and copy it'); } }
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { toast('Copied'); }, fallback); else fallback();
+}
+function changePin() {
+  openSheet('<h3>Change app PIN</h3><input id="np1" type="password" inputmode="numeric" maxlength="8" placeholder="New PIN (4 to 8 digits)" style="margin-bottom:8px">' +
+    '<input id="np2" type="password" inputmode="numeric" maxlength="8" placeholder="Repeat new PIN" style="margin-bottom:12px">' +
+    '<div class="row"><button class="btn ghost" onclick="closeSheet()">Cancel</button><button class="btn" onclick="doChangePin()">Save</button></div>');
+}
+function doChangePin() {
+  var a = $('np1').value.trim();
+  if (a !== $('np2').value.trim()) return toast('The two PINs do not match', true);
+  call('changePin', { newPin: a }).then(function (r) { S.pin = a; store('amitek_pin', a); closeSheet(); toast(r.message); }).catch(fail);
+}
+
 function renderSettings() {
   setHeader('Settings', false); loading();
-  call('settings').then(function (r) {
+  call('status').then(function (r) {
     if (S.tab !== 'settings' || S.lead) return;
     var b = r.bot;
-    $('main').innerHTML = '<h2>WhatsApp bot</h2><div class="card">' +
+    $('main').innerHTML = setupHtml(r) + '<h2>WhatsApp bot</h2><div class="card">' +
       '<div class="switch"><div>Send on WhatsApp<small>Off = test mode. Replies are only written to the sheet.</small></div>' +
       '<label class="tog"><input type="checkbox" id="s_send"' + (b.sendEnabled ? ' checked' : '') + '><span></span></label></div>' +
       '<div class="switch"><div>Bot replies automatically<small>Off = the bot stays quiet and the team replies. Alerts still come.</small></div>' +
@@ -439,8 +568,11 @@ function renderSettings() {
       '<div class="switch" style="display:block"><div>Salesperson WhatsApp<small>Gets hot lead alerts and the 9 AM summary.</small></div>' +
       '<input id="s_sales" type="tel" value="' + esc(b.salesWhatsapp) + '" placeholder="98xxxxxxxx" style="margin-top:8px"></div>' +
       '<button class="btn" style="width:100%;margin-top:6px" onclick="saveSettings(this)">Save</button></div>' +
-      '<h2>This phone</h2><div class="card"><div class="info" style="margin-bottom:10px">Tip: in Chrome tap ⋮ then "Add to Home screen" to open this like an app.</div>' +
-      '<button class="btn ghost" style="width:100%" onclick="lock()">Lock app (forget PIN)</button></div>';
+      '<h2>This phone</h2><div class="card">' +
+      (GAS ? '<div class="info" style="margin-bottom:10px">Tip: in Chrome tap ⋮ then "Add to Home screen" to open this like an app.</div>' :
+             '<div class="info" style="margin-bottom:10px;word-break:break-all">Connected to ' + esc(S.url) + '</div>') +
+      '<div class="row"><button class="btn ghost" onclick="changePin()">Change PIN</button>' +
+      '<button class="btn ghost" onclick="lock()">Lock app</button></div></div>';
     S.mode = b.mode === 'sales' ? 'sales' : 'gentle';
   }).catch(fail);
 }
@@ -449,14 +581,15 @@ function saveSettings(btn) {
   btn.disabled = true;
   call('saveSettings', { SEND_ENABLED: $('s_send').checked ? 'true' : 'false', BOT_ENABLED: $('s_bot').checked ? 'true' : 'false',
                          BOT_MODE: S.mode, SALES_WHATSAPP: $('s_sales').value.trim() })
-    .then(function (r) { btn.disabled = false; toast('Settings saved'); })
+    .then(function (r) { btn.disabled = false; toast('Settings saved'); renderSettings(); })
     .catch(function (e) { btn.disabled = false; fail(e); });
 }
 
 // ---------------------------------------------------------------- start
 (function start() {
+  S.url = store('amitek_url') || '';
   var saved = store('amitek_pin');
-  if (!saved) return lock();
+  if (!saved || (!GAS && !S.url)) return lock();
   S.pin = saved; $('appView').classList.remove('hidden'); showTab('today');
 })();
 </script>

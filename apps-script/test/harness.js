@@ -45,13 +45,17 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
       getProperty: k => (k in store ? store[k] : null), setProperty: (k, v) => { store[k] = v; } }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     CacheService: { getScriptCache: () => ({ get: k => (k in cache ? cache[k] : null), put: (k, v) => { cache[k] = v; } }) },
-    HtmlService: { createHtmlOutputFromFile: f => { const o = { file: f, setTitle: () => o, addMetaTag: () => o }; return o; } },
-    ContentService: { createTextOutput: t => ({ text: t }) },
+    HtmlService: {
+      createHtmlOutputFromFile: f => { const o = { file: f, setTitle: () => o, addMetaTag: () => o }; return o; },
+      createHtmlOutput: html => { const o = { file: 'App', html, setTitle: () => o, addMetaTag: () => o }; return o; }
+    },
+    ContentService: { MimeType: { JSON: 'json' }, createTextOutput: t => { const o = { text: t, setMimeType: () => o }; return o; } },
     Utilities: {
       formatDate: (d, tz, f) => new Date(d).toISOString(),
       getUuid: () => '1234-5678-uuid'
     },
     ScriptApp: {
+      getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/TEST/exec' }),
       getProjectTriggers: () => triggers.slice(),
       deleteTrigger: t => triggers.splice(triggers.indexOf(t), 1),
       newTrigger: fn => {
@@ -77,7 +81,7 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
     }
   };
   vm.createContext(ctx);
-  ['Code.gs', 'App.gs'].forEach(f =>
+  (process.env.DIST ? ['dist/Amitek_Bot.gs'] : ['Code.gs', 'App.gs']).forEach(f =>
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), ctx, { filename: f }));
   ctx.setup();
   // apply test settings to the Settings tab
