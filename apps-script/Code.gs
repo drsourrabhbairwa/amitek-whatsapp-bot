@@ -52,14 +52,17 @@ var DEFAULT_SETTINGS = {
   WA_API_VERSION: 'v19.0',
   RELAY_URL: '',                     // optional Cloudflare relay (relay/worker.js) if BlueTick cannot verify the Google link
   CAMPAIGN_DAILY_LIMIT: '250',       // campaign messages per 24 hours (Meta's limit for the number; raise it as Meta raises yours)
+  CAMPAIGN_HOURS: '9-20',            // campaign messages go out only between these India hours (9-20 = 9 AM to 8 PM)
   CAMPAIGN_BATCH: '40',              // campaign messages per 5-minute run
   LEARN_AUTO: 'true',                // every Monday the bot suggests what it learned from last week's chats (needs approval)
+  BUSINESS_NUMBER: '',               // the WhatsApp number leads message (for wa.me links and QR codes), e.g. 919876543210
+  SORT_RULES: '',                    // what the owner taught the bot about telling lead types apart (used when it sorts leads)
   CATEGORY_PLAYBOOK: ''              // JSON {"Applicator": {template, language, pitch}}: opening template and offer per category (Grow.gs)
 };
 
-var STOP_WORDS = ['stop', 'unsubscribe', 'stop messages', 'not interested', 'abhi nahi', 'band karo', 'मत भेजो'];
+var STOP_WORDS = ['stop', 'unsubscribe', 'stop messages', 'not interested', 'abhi nahi', 'band karo', 'मत भेजो', 'अभी नहीं'];
 var START_WORDS = ['start', 'subscribe'];
-var CALL_WORDS = ['call me', 'call karein', 'discuss a project'];
+var CALL_WORDS = ['call me', 'call karein', 'discuss a project', 'कॉल करें', 'कॉल करे'];
 var GOODBYE = "Theek hai ji, ab aapko hamari taraf se message nahi aayenge. 🙏 Kabhi bhi zarurat ho to yahan 'START' likh dijiye.";
 var CALL_ACK = 'Ji zaroor 🙏 Hamari team ke member aapko jaldi call karenge.';
 
@@ -425,6 +428,7 @@ var STYLE_RULES = [
   '- Do not chase or push. If they only say ok / thanks, a short warm reply is enough.',
   '- As soon as they show interest (says yes, haan, send details, interested, call me, asks rate, sample, dealership, site visit or a meeting),',
   '  stop asking questions: call handoff_to_sales with priority "hot" and tell them warmly that a team member will contact them very soon.',
+  '  (If they ask a rate and that exact price is in the knowledge for their customer type, you may give it with the GST basis first, then hand off.)',
   '  Interested people go straight to the team; do not make them answer a questionnaire first.',
   '- The first message in the chat may be an Amitek template (marked [Campaign ...]). Continue from it, do not introduce yourself again.'
 ].join('\n');
@@ -562,7 +566,7 @@ function runAgent_(hist, lead) {
   var system = role + '\n\n' + STYLE_RULES + '\n\n<knowledge>\n' + knowledge_() + '\n</knowledge>' + pitchFor_(lead);
   var messages = buildMessages_(hist, lead);
   var result = { reply: '', updates: {}, handoff: null, optedOut: false };
-  var retried = false;
+  var retried = false, firstDraft = '';
   for (var round = 0; round < 5; round++) {
     var r = callModel_(system, messages);
     if (r.stop_reason === 'refusal') {
@@ -574,8 +578,10 @@ function runAgent_(hist, lead) {
     if (!toolUses.length) {
       result.reply = content.filter(function (b) { return b.type === 'text'; })
           .map(function (b) { return b.text; }).join('\n').trim();
+      if (retried && !result.reply) result.reply = firstDraft;  // the rewrite came back empty: better the first draft than silence
       if (!retried && !result.handoff && !result.optedOut && repeatsQuestion_(result.reply, hist)) {
         retried = true;  // asked the same thing twice: let the model rewrite once
+        firstDraft = result.reply;
         messages.push({ role: 'assistant', content: content });
         messages.push({ role: 'user', content: '[System note, not from the customer: your draft repeats a question already asked in this chat. ' +
           'Do not ask it again. React to what they said, offer something useful, or if they sound interested call handoff_to_sales. ' +
@@ -590,6 +596,7 @@ function runAgent_(hist, lead) {
       return { type: 'tool_result', tool_use_id: tu.id, content: runTool_(tu.name, tu.input || {}, result) };
     }) });
   }
+  if (!result.reply && firstDraft) result.reply = firstDraft;
   return result;
 }
 
@@ -599,7 +606,7 @@ function questionWords_(q) {
   return String(q).toLowerCase().replace(/[^a-z0-9\u0900-\u097f ]+/g, ' ').split(/\s+/).filter(function (w) { return w && !skip[w]; });
 }
 function questionsIn_(text) {
-  return (String(text).replace(/\n+/g, ' ').match(/[^.!?\u0964]*\?/g) || []).map(questionWords_).filter(function (w) { return w.length >= 2; });
+  return (String(text).replace(/https?:\/\/\S+/g, ' ').replace(/\n+/g, ' ').match(/[^.!?\u0964]*\?/g) || []).map(questionWords_).filter(function (w) { return w.length >= 2; });
 }
 /** True when the draft asks a question the bot already asked in the last few messages. */
 function repeatsQuestion_(reply, hist) {
@@ -609,9 +616,9 @@ function repeatsQuestion_(reply, hist) {
   (hist || []).filter(function (h) { return h.direction === 'out' && h.sender === 'bot'; }).slice(-8)
       .forEach(function (h) { old = old.concat(questionsIn_(h.body)); });
   return now.some(function (q) {
-    return old.some(function (o) {
-      var same = q.filter(function (w) { return o.indexOf(w) >= 0; }).length;
-      return same / Math.min(q.length, o.length) >= 0.75;
+    return old.some(function (o) {  // same question when one's words all appear in the other ("terrace" vs "bathroom" is a new question)
+      var a = q.length <= o.length ? q : o, b = a === q ? o : q;
+      return a.every(function (w) { return b.indexOf(w) >= 0; });
     });
   });
 }

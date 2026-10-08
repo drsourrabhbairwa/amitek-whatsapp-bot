@@ -134,7 +134,7 @@
   .bar i { display: block; height: 100%; background: var(--ok); }
   .b-Running { background: var(--ok-soft); color: var(--ok); }
   .b-Paused { background: var(--due-soft); color: var(--due); }
-  .b-Scheduled { background: var(--wait-soft); color: var(--wait); }
+  .camp .b-Scheduled { background: var(--wait-soft); color: var(--wait); }
   .plan { white-space: pre-wrap; font-size: 14px; line-height: 1.45; }
   .check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; margin: 10px 0 0; }
   .check input { width: 18px; height: 18px; margin: 2px 0 0; flex: none; }
@@ -624,6 +624,8 @@ function renderSettings() {
       '<button id="m_sales" class="' + (b.mode === 'sales' ? 'on' : '') + '" onclick="mode(\'sales\')">Sales head</button></div></div>' +
       '<div class="switch" style="display:block"><div>Salesperson WhatsApp<small>Gets hot lead alerts and the 9 AM summary.</small></div>' +
       '<input id="s_sales" type="tel" value="' + esc(b.salesWhatsapp) + '" placeholder="98xxxxxxxx" style="margin-top:8px"></div>' +
+      '<div class="switch" style="display:block"><div>Amitek business WhatsApp number<small>The number leads message. Used for the "Let leads message you first" links and QR in the Send tab.</small></div>' +
+      '<input id="s_biz" type="tel" value="' + esc((b.businessNumber || '').replace(/^91/, '')) + '" placeholder="98xxxxxxxx" style="margin-top:8px"></div>' +
       '<details class="switch" style="display:block"' + (Object.keys(b.team || {}).length ? ' open' : '') + '><summary style="cursor:pointer">Team by category' +
       '<small>Who else gets alerts for each type of lead. The main salesperson still gets everything. Several numbers: separate with commas.</small></summary>' +
       ['All'].concat(b.categories || []).map(function (c) {
@@ -676,7 +678,7 @@ function mode(m) { S.mode = m; $('m_gentle').classList.toggle('on', m === 'gentl
 function saveSettings(btn) {
   btn.disabled = true;
   call('saveSettings', { SEND_ENABLED: $('s_send').checked ? 'true' : 'false', BOT_ENABLED: $('s_bot').checked ? 'true' : 'false',
-                         BOT_MODE: S.mode, SALES_WHATSAPP: $('s_sales').value.trim(), TEAM_ROUTING: teamJson() })
+                         BOT_MODE: S.mode, SALES_WHATSAPP: $('s_sales').value.trim(), BUSINESS_NUMBER: $('s_biz').value.trim(), TEAM_ROUTING: teamJson() })
     .then(function (r) { btn.disabled = false; toast('Settings saved'); renderSettings(); })
     .catch(function (e) { btn.disabled = false; fail(e); });
 }
@@ -693,7 +695,7 @@ function renderCampaigns() {
       (!d.sendEnabled ? '<div class="notice">Test mode is on, so campaigns cannot start. Turn on "Send on WhatsApp" in Settings when ready.</div>' : '') +
       '<div class="card info" style="margin-bottom:12px">WhatsApp lets a business write first only with a <b>template approved by Meta</b>. ' +
       'Create it in BlueTick > Templates, wait for "Approved", then use its exact name here. ' +
-      'Messages go out 40 at a time every 5 minutes, at most <b>' + d.dailyLimit + ' a day</b> (' + d.sent24h + ' sent in the last 24 hours). ' +
+      'Messages go out 40 at a time every 5 minutes, ' + esc(d.hoursText) + ' India time, at most <b>' + d.dailyLimit + ' a day</b> (' + d.sent24h + ' sent in the last 24 hours). ' +
       '<a href="#" onclick="limitSheet();return false">Change limit</a></div>' +
       '<div class="card form" style="margin-bottom:12px"><label style="margin-top:0">Tell the bot who to message, and when</label>' +
       '<textarea id="askBot" rows="2" placeholder="applicators ko monday 11 baje message bhejo"></textarea>' +
@@ -702,9 +704,52 @@ function renderCampaigns() {
       'The main salesperson can send the same thing to the bot on WhatsApp.</div>' +
       '<button class="btn" style="width:100%" onclick="askPlan(this)">Make plan</button></div>' +
       '<button class="btn ghost" style="width:100%;margin-bottom:12px" onclick="editCamp(null)">＋ New campaign (by hand)</button>' +
+      inboundCard(d.businessNumber) +
       (list.length ? list.map(campCard).join('') : '<div class="empty">No campaigns yet</div>');
+    if ($('j_cat')) showJoin();
   }).catch(fail);
 }
+var JOIN_TEXT = {
+  'Applicator': 'Namaste Amitek, main applicator hoon. Aapke products aur rates ki details bhejiye.',
+  'End Client': 'Namaste Amitek, mere ghar ya building me leakage ya seelan ki problem hai. Kripya batayein.',
+  'Builder': 'Namaste Amitek, main builder hoon. Aapke waterproofing, flooring aur baaki solutions ki details bhejiye.',
+  'Architect': 'Namaste Amitek, main architect hoon. Aapke products ke specs aur details bhejiye.',
+  'Contractor': 'Namaste Amitek, main contractor hoon. Aapke products aur project rate ki details bhejiye.',
+  'Dealer': 'Namaste Amitek, main dealer hoon. Dealership ke baare me bataiye.'
+};
+function joinLink(cat) { return 'https://wa.me/' + S.bizNumber + '?text=' + encodeURIComponent(S.joinText[cat]); }
+function inboundCard(num) {
+  S.bizNumber = num; S.joinText = JSON.parse(JSON.stringify(JOIN_TEXT));
+  var head = '<div class="card form" style="margin-bottom:12px"><label style="margin-top:0">Let leads message you first (no template needed)</label>' +
+    '<div class="info">When a person writes to your number first, WhatsApp lets the bot reply freely for 24 hours, so no template is needed. ' +
+    'Put a link or QR on your visiting card, website, Instagram, Google listing, shop stickers or ads. The message already says what they are, so the bot knows which pitch to use.</div>';
+  if (!num) return head + '<div class="info" style="margin-top:8px"><b>Add your Amitek business WhatsApp number in Settings first.</b></div></div>';
+  return head + '<label>For</label><select id="j_cat" onchange="showJoin()">' + Object.keys(JOIN_TEXT).map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') + '</select>' +
+    '<label>Their first message (you can change it)</label><textarea id="j_text" rows="2" oninput="showJoin(true)"></textarea>' +
+    '<div id="j_out"></div></div>';
+}
+function showJoin(typing) {
+  var cat = $('j_cat').value;
+  if (!typing) $('j_text').value = S.joinText[cat]; else S.joinText[cat] = $('j_text').value;
+  var link = joinLink(cat);
+  if (typing && $('j_link')) {  // update the link now, the QR once typing stops
+    $('j_link').value = link;
+    clearTimeout(showJoin.h); showJoin.h = setTimeout(function () { var q = $('j_qr'); if (q) q.src = qrSrc(link); }, 800);
+    return;
+  }
+  $('j_out').innerHTML = '<input id="j_link" type="text" readonly value="' + esc(link) + '" onclick="this.select()" style="margin-top:8px">' +
+    '<div class="row" style="margin-top:8px"><button class="btn" onclick="copyJoin()">Copy link</button>' +
+    (navigator.share ? '<button class="btn ghost" onclick="shareJoin()">Share</button>' : '') + '</div>' +
+    '<div style="text-align:center;margin-top:10px"><img id="j_qr" alt="QR code" width="180" height="180" src="' + esc(qrSrc(link)) + '">' +
+    '<div class="info">Scan with a phone camera to open WhatsApp. Press and hold the QR to save it.</div></div>';
+}
+function qrSrc(link) { return 'https://api.qrserver.com/v1/create-qr-code/?size=360x360&margin=8&data=' + encodeURIComponent(link); }
+function copyJoin() {
+  var el = $('j_link'); el.select();
+  try { (navigator.clipboard ? navigator.clipboard.writeText(el.value) : Promise.reject()).then(function () { toast('Link copied'); }, function () { document.execCommand('copy'); toast('Link copied'); }); }
+  catch (e) { try { document.execCommand('copy'); toast('Link copied'); } catch (e2) { toast('Press and hold the link to copy', true); } }
+}
+function shareJoin() { navigator.share({ text: $('j_text').value, url: $('j_link').value }).catch(function () {}); }
 function askPlan(btn) {
   var text = $('askBot').value.trim();
   if (!text) return toast('Write who to message, e.g. applicators ko monday 11 baje', true);
@@ -733,8 +778,8 @@ function campCard(c) {
   if (['Running', 'Done', 'Scheduled'].indexOf(c.status) < 0) btns.push('<button class="btn ghost" onclick="editCamp(\'' + c.id + '\')">Edit</button>');
   if (c.status === 'Draft') btns.push('<button class="btn red" onclick="campDo(\'campaignDelete\',\'' + c.id + '\',this)">Delete</button>');
   return '<div class="card camp"><div class="top"><b>' + esc(c.name) + '</b><span class="badge b-' + esc(c.status) + '">' + esc(c.status) + '</span></div>' +
-    '<div class="info">Template ' + esc(c.template) + ' (' + esc(c.language) + ') · ' + esc(who) + '</div>' +
-    (c.status === 'Scheduled' && c.startAt ? '<div class="info">⏰ Starts ' + esc(when(c.startAt)) + '</div>' : '') +
+    '<div class="info">' + (c.template === 'auto' ? 'Template picked by category' : 'Template ' + esc(c.template) + ' (' + esc(c.language) + ')') + ' · ' + esc(who) + '</div>' +
+    (c.status === 'Scheduled' && c.startAt ? '<div class="info">⏰ Starts ' + esc(new Date(c.startAt).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })) + '</div>' : '') +
     (c.total || c.sent ? '<div class="bar"><i style="width:' + pct + '%"></i></div>' : '') +
     '<div class="info"><b>' + c.sent + '</b>' + (f.keepOn ? '' : ' of ' + c.total) + ' sent · <b>' + c.replied + '</b> replied' +
     (c.failed ? ' · ' + c.failed + ' failed' : '') + (c.optedOut ? ' · ' + c.optedOut + ' said STOP' : '') + '</div>' +
@@ -747,9 +792,10 @@ function campStart(id, btn) {
     '<div class="row" style="margin-top:12px"><button class="btn ghost" onclick="closeSheet()">Cancel</button>' +
     '<button class="btn" id="startOk" disabled onclick="closeSheet();campDo(\'campaignStart\',\'' + id + '\')">Yes, send</button></div>');
   call('campaignPreview', { filter: c.filter }).then(function (r) {
-    $('startInfo').innerHTML = r.welcome ? 'From now on, every new lead you add gets the template "' + esc(c.template) + '" on WhatsApp, until you pause it. Existing leads are not messaged.' :
+    var tpl = c.template === 'auto' ? 'the template set for their category' : 'the template "' + esc(c.template) + '"';
+    $('startInfo').innerHTML = r.welcome ? 'From now on, every new lead you add gets ' + tpl + ' on WhatsApp, until you pause it. Existing leads are not messaged.' :
       '<b>' + r.count + ' leads</b> match' + (c.sent ? ' (those who already got it are skipped)' : '') +
-      '. They get the template "' + esc(c.template) + '" on WhatsApp' +
+      '. They get ' + tpl + ' on WhatsApp' +
       (c.startAt && new Date(c.startAt) > new Date() && c.status === 'Draft' ? ', starting ' + esc(when(c.startAt)) : '') + '. This cannot be undone.';
     $('startOk').disabled = false;
   }).catch(fail);
@@ -760,12 +806,18 @@ function campDo(action, id, btn) {
     .catch(function (e) { if (btn) btn.disabled = false; fail(e); });
 }
 function limitSheet() {
-  openSheet('<h3>Campaign messages per day</h3><div class="info">Meta sets how many people your number may message first each day ' +
-    '(new numbers usually 250, then 1,000 and more as quality stays good). Check it in BlueTick or Meta Business Manager.</div>' +
-    '<input id="limitIn" type="number" value="' + S.campData.dailyLimit + '" style="margin:10px 0 12px">' +
+  var h = String(S.campData.hours || '9-20').split('-');
+  openSheet('<h3>Campaign messages per day</h3><div class="info">Meta sets how many people your number may message first each day (yours: 2,000). ' +
+    'Start lower and go up in steps, for example 250 to 500 for the first 2 or 3 days, then 1,000, then 2,000, as long as the quality rating in BlueTick stays green. ' +
+    'If people block or report the messages, the rating drops and Meta can lower your limit.</div>' +
+    '<label class="info" style="display:block;margin-top:10px">Messages per day</label>' +
+    '<input id="limitIn" type="number" value="' + S.campData.dailyLimit + '" style="margin:4px 0 8px">' +
+    '<label class="info" style="display:block">Send between (India time, 24-hour clock)</label>' +
+    '<div class="row"><input id="hourFrom" type="number" min="0" max="23" value="' + esc(h[0]) + '"><input id="hourTo" type="number" min="1" max="24" value="' + esc(h[1]) + '"></div>' +
+    '<div class="info" style="margin:4px 0 12px">9 and 20 means 9 AM to 8 PM. Nobody is messaged at night. At 40 every 5 minutes the bot can send about 4,800 in that time, so 2,000 a day is fine.</div>' +
     '<div class="row"><button class="btn ghost" onclick="closeSheet()">Cancel</button><button class="btn" onclick="saveLimit()">Save</button></div>');
 }
-function saveLimit() { call('campaignLimit', { limit: $('limitIn').value }).then(function (r) { closeSheet(); toast(r.message); renderCampaigns(); }).catch(fail); }
+function saveLimit() { call('campaignLimit', { limit: $('limitIn').value, from: $('hourFrom').value, to: $('hourTo').value }).then(function (r) { closeSheet(); toast(r.message); renderCampaigns(); }).catch(fail); }
 
 function editCamp(id) {
   var c = id ? S.campData.campaigns.filter(function (x) { return x.id === id; })[0] : null;
@@ -789,11 +841,14 @@ function renderCampForm() {
   setHeader(c.id ? 'Edit campaign' : 'New campaign', true);
   $('main').innerHTML = '<div class="card form">' +
     '<label>Campaign name (for you)</label><input id="c_name" type="text" value="' + esc(c.name) + '" placeholder="e.g. Jaipur applicators October">' +
-    '<label>Template name, exactly as approved in BlueTick</label><input id="c_tpl" type="text" autocapitalize="off" value="' + esc(c.template) + '" placeholder="e.g. amitek_intro_hi">' +
+    '<label class="check"><input id="c_auto" type="checkbox"' + (c.template === 'auto' ? ' checked' : '') + ' onchange="$(\'c_tplbox\').style.display=this.checked?\'none\':\'block\'">' +
+    '<span>Pick the template by category<small>Each lead gets the template set for its category in Settings > Pitch by category (applicator, builder, dealer…). Leads with no category or no template are left out.</small></span></label>' +
+    '<div id="c_tplbox" style="display:' + (c.template === 'auto' ? 'none' : 'block') + '">' +
+    '<label>Template name, exactly as approved in BlueTick</label><input id="c_tpl" type="text" autocapitalize="off" value="' + esc(c.template === 'auto' ? '' : c.template) + '" placeholder="e.g. amitek_intro_hi">' +
     '<label>Template language</label><select id="c_lang">' + LANGS.map(function (l) {
       return '<option value="' + l[0] + '"' + (l[0] === c.language ? ' selected' : '') + '>' + l[1] + ' (' + l[0] + ')</option>'; }).join('') + '</select>' +
     '<label class="check"><input id="c_name1" type="checkbox"' + (c.usesName ? ' checked' : '') + '><span>The template has {{1}} for the customer\'s name' +
-    '<small>The first name (or business name, or "ji") is filled in.</small></span></label>' +
+    '<small>The first name (or business name, or "ji") is filled in.</small></span></label></div>' +
     '<label>Template text (copy it from BlueTick, so the chat history shows what was sent)</label>' +
     '<textarea id="c_text" rows="4" placeholder="Namaste {{1}} ji, Amitek Waterproofing se…">' + esc(c.text) + '</textarea></div>' +
     '<h2>Who gets it</h2><div class="card form">' +
@@ -819,7 +874,7 @@ function localInput(iso) {
 }
 function readCamp() {
   var c = S.camp, f = c.filter;
-  c.name = $('c_name').value.trim(); c.template = $('c_tpl').value.trim(); c.language = $('c_lang').value;
+  c.name = $('c_name').value.trim(); c.template = $('c_auto').checked ? 'auto' : $('c_tpl').value.trim(); c.language = $('c_lang').value;
   c.usesName = $('c_name1').checked; c.text = $('c_text').value.trim();
   c.startAt = $('c_start').value ? new Date($('c_start').value).toISOString() : '';
   f.cities = $('c_cities').value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
@@ -863,6 +918,7 @@ function renderLearn() {
       'but <b>nothing is used until you approve it</b>, so it never picks up a wrong price or promise.</div>' +
       '<h2>To review' + (k.suggestions.length ? ' (' + k.suggestions.length + ')' : '') + '</h2>' +
       '<div class="card">' + (sug || '<div class="info">Nothing to review. Tap "Learn from chats" or teach it something below.</div>') + '</div>' +
+      '<h2>Sort leads</h2><div class="card form" id="sortBox"><div class="info">Loading…</div></div>' +
       '<h2>Learn from chats and campaigns</h2><div class="card">' +
       '<div class="row"><select id="l_days"><option value="7">Last 7 days</option><option value="14" selected>Last 14 days</option><option value="30">Last 30 days</option></select>' +
       '<button class="btn" onclick="learnChats(this)">Learn now</button></div>' +
@@ -881,7 +937,52 @@ function renderLearn() {
         return '<div class="lead" onclick="editDoc(' + i + ')"><div class="main"><div class="name">' + esc(d.title || 'Untitled') + '</div>' +
           '<div class="pre">' + esc(d.content) + '</div></div></div>'; }).join('') + '</div>' : '<div class="empty">Nothing yet</div>') +
       '<div class="info" style="margin:8px 2px">' + Math.round(k.size / 1000) + 'k characters. Keep it under about 80k; very long texts are cut.</div>';
+    loadSort();
   }).catch(fail);
+}
+function loadSort() {
+  call('sortOverview').then(function (r) {
+    if (!$('sortBox')) return;
+    S.sort = r;
+    var opts = function (sel) { return r.categories.map(function (c) { return '<option' + (c === sel ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join(''); };
+    var list = r.pending.map(function (x) {
+      return '<div class="note" data-row="' + x.row + '"><div><b>' + esc(x.lead || '+' + x.phone) + '</b>' + (x.type ? ' <span class="info">· ' + esc(x.type) + '</span>' : '') + '</div>' +
+        '<div class="info" style="margin:2px 0 6px">' + esc(x.why) + '</div>' +
+        '<div class="row"><select class="sort_c">' + opts(x.category) + '</select>' +
+        '<button class="btn green" onclick="sortDecide(this,true)">✓</button><button class="btn ghost" onclick="sortDecide(this,false)">✗</button></div></div>';
+    }).join('');
+    $('sortBox').innerHTML =
+      '<div class="info">The bot reads each lead\'s name, business type and address and works out what kind of customer it is (applicator, builder, dealer…), ' +
+      'so every lead gets the right template. You approve what it decides.</div>' +
+      '<div class="info" style="margin:8px 0"><b>' + r.unsorted + '</b> leads have no clear category yet.' + (r.hasAi ? '' : ' Add the AI key in Settings so it can read the unclear ones.') + '</div>' +
+      '<button class="btn" style="width:100%" onclick="sortRun(this)">Sort leads now</button>' +
+      (r.pendingCount ? '<h2 style="margin:14px 0 6px">To approve (' + r.pendingCount + ')</h2>' + list +
+        (r.pendingCount > 60 ? '<div class="info">Showing the first 60.</div>' : '') +
+        '<button class="btn green" style="width:100%;margin-top:8px" onclick="sortAll(this)">✓ Approve all ' + r.pendingCount + '</button>' : '') +
+      '<label style="margin-top:14px">Teach it how you tell them apart (optional)</label>' +
+      '<textarea id="sort_rules" rows="3" placeholder="e.g. Anything with Painting or Painters in the name is an Applicator. Interior designers are Architects.">' + esc(r.rules) + '</textarea>' +
+      '<button class="btn ghost" style="width:100%;margin-top:8px" onclick="sortTeach(this)">Save what I taught</button>';
+  }).catch(fail);
+}
+function sortRun(btn) {
+  var t = btn.textContent; btn.disabled = true; btn.textContent = 'Reading leads…';
+  var typed = $('sort_rules') ? $('sort_rules').value.trim() : '';
+  (typed !== String(S.sort.rules || '').trim() ? call('sortTeach', { text: typed }) : Promise.resolve()).then(function () { return call('sortRun'); }).then(function (r) { toast(r.message); loadSort(); })
+    .catch(function (e) { btn.disabled = false; btn.textContent = t; fail(e); });
+}
+function sortDecide(btn, ok) {
+  var n = btn.closest('.note'); btn.disabled = true;
+  call('sortDecide', { row: n.dataset.row, approve: ok, category: n.querySelector('.sort_c').value })
+    .then(function (r) { toast(r.message); loadSort(); }).catch(function (e) { btn.disabled = false; fail(e); });
+}
+function sortAll(btn) {
+  btn.disabled = true;
+  call('sortApproveAll').then(function (r) { toast(r.message); loadSort(); }).catch(function (e) { btn.disabled = false; fail(e); });
+}
+function sortTeach(btn) {
+  btn.disabled = true;
+  call('sortTeach', { text: $('sort_rules').value }).then(function (r) { btn.disabled = false; toast(r.message); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
 }
 function decide(btn, ok) {
   var n = btn.closest('.note'); btn.disabled = true;

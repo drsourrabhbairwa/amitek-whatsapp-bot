@@ -11,7 +11,7 @@ function appPage_() {
 }
 
 var EDITABLE = ['Name', 'Business', 'Category', 'Tier', 'City', 'Requirement', 'Area sqft', 'Assigned To', 'Follow-up Note'];
-var APP_SETTINGS = ['SEND_ENABLED', 'BOT_ENABLED', 'BOT_MODE', 'SALES_WHATSAPP', 'TEAM_ROUTING'];
+var APP_SETTINGS = ['SEND_ENABLED', 'BOT_ENABLED', 'BOT_MODE', 'SALES_WHATSAPP', 'TEAM_ROUTING', 'BUSINESS_NUMBER'];
 
 /** Single entry point for the phone app: api(pin, action, argsJson) -> JSON string. */
 function api(pin, action, argsJson) {
@@ -34,8 +34,9 @@ function api(pin, action, argsJson) {
     cache.put('pin_fails', String(fails + 1), 3600);
     return JSON.stringify({ error: 'PIN', message: 'Wrong PIN' });
   }
-  var lock = LockService.getScriptLock();
-  lock.waitLock(25000);
+  // slow AI actions only append rows, so they run without holding up incoming WhatsApp messages
+  var lock = { sortRun: 1, learnChats: 1, learnText: 1 }[action] ? { releaseLock: function () {} } : LockService.getScriptLock();
+  if (lock.waitLock) lock.waitLock(25000);
   try {
     var fn = APP_ACTIONS[action] || (typeof GROW_ACTIONS !== 'undefined' && GROW_ACTIONS[action]);
     if (!fn) return JSON.stringify({ error: 'Unknown action ' + action });
@@ -163,7 +164,8 @@ var APP_ACTIONS = {
     var phone = normPhone_(a.phone);
     if (phone.length < 11) return { error: 'Enter a 10-digit mobile number' };
     if (getLead_(phone)) return { error: 'This number is already in the list', phone: phone };
-    upsertLead_(phone, { 'Name': a.name || '', 'Business': a.business || '', 'Category': CATEGORIES.indexOf(a.category) >= 0 ? a.category : 'Other',
+    var cat = CATEGORIES.indexOf(a.category) >= 0 ? a.category : 'Other';  // unknown ones are sorted later (Learn > Sort leads), with your approval
+    upsertLead_(phone, { 'Name': a.name || '', 'Business': a.business || '', 'Category': cat, 'Tier': TIER_OF[cat] || 'To confirm',
                          'City': a.city || '', 'Requirement': a.note || '', 'Status': 'Contacted', 'Campaign': 'Added from app',
                          'Next Follow-up': addHours_(24), 'Follow-up Note': a.note || 'New lead added from app' }, 'app');
     var welcomed = a.welcome !== false && welcomeNewLead_();
@@ -291,6 +293,10 @@ var APP_ACTIONS = {
       var v = String(a[k]);
       if (k === 'BOT_MODE' && ['gentle', 'sales'].indexOf(v) < 0) return;
       if (k === 'SALES_WHATSAPP') v = v ? normPhone_(v) : '';
+      if (k === 'BUSINESS_NUMBER') {
+        v = v ? normPhone_(v) : '';
+        if (v && !/^91[6-9]\d{9}$/.test(v)) throw new Error('Business number: enter the 10-digit mobile number');
+      }
       if (k === 'TEAM_ROUTING') {
         var o = {}, bad = [];
         try { o = JSON.parse(v || '{}') || {}; } catch (err) { return; }
@@ -313,7 +319,7 @@ var APP_ACTIONS = {
 
 function botState_() {
   return { sendEnabled: sendEnabled_(), botEnabled: botEnabled_(), mode: setting_('BOT_MODE'),
-           salesWhatsapp: String(setting_('SALES_WHATSAPP')), model: aiModel_(), provider: aiProvider_(),
+           salesWhatsapp: String(setting_('SALES_WHATSAPP')), businessNumber: String(setting_('BUSINESS_NUMBER')), model: aiModel_(), provider: aiProvider_(),
            team: (function () { var r = teamRouting_(), o = {}; Object.keys(r).forEach(function (c) { o[c] = r[c].join(', '); }); return o; })(),
            categories: CATEGORIES };
 }

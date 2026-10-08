@@ -60,6 +60,9 @@ WhatsApp only lets a business write first with a **template approved by Meta**.
 - **Send tab > "Tell the bot"** (or WhatsApp the bot from the main salesperson number): write who and when, for example `applicators ko monday 11 baje message bhejo` or `builders aur architects jaipur kal 4 baje`. The bot shows the plan (leads per category, template, time); reply YES to confirm or NO to cancel. Nothing is sent before YES. `CAMPAIGNS` shows what is running or scheduled.
 - Scheduled campaigns start by themselves at the time (checked every 5 minutes). Times are India time; no time means 10 AM; `abhi` means now.
 - **How the bot talks:** like a person from your team. It reacts to what the lead said, asks at most one question, never repeats a question it already asked (a guard rewrites the reply if it tries), knows what the template said (paste it in Settings > Pitch by category, "What the first message says"), and as soon as a lead shows interest (haan, details bhejo, rate, call) it stops asking and passes the lead to you with a hot alert.
+- **One template is enough to start:** every category defaults to the common opener `amitek_intro` (Hindi `hi`; make an English `en` copy if you like). After the lead replies, the bot brings up the offer for that lead's category. You can still give a category its own template in Settings > Pitch by category.
+- **No template at all:** the Send tab has "Let leads message you first": a WhatsApp link and QR per category (needs your business number in Settings). When a lead writes first, the bot can reply freely.
+- **Sort leads (Learn tab):** the bot reads names and business types of leads with no clear category and suggests one; you approve. Campaigns can also pick each lead's template by category ("Pick the template by category").
 - Template texts to copy into BlueTick: `campaigns/category_templates.md` in the project files.
 
 ## Teaching the bot (Learn tab)
