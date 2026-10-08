@@ -653,7 +653,8 @@ function loadPlaybook() {
           '<label>Template name</label><input type="text" autocapitalize="off" class="pb_t" data-cat="' + esc(c) + '" value="' + esc(p.template) + '" placeholder="e.g. amitek_' + esc(c.toLowerCase().replace(/\s+/g, '_')) + '">' +
           '<label>Template language</label><select class="pb_l" data-cat="' + esc(c) + '">' + LANGS.map(function (l) {
             return '<option value="' + l[0] + '"' + (l[0] === (p.language || 'en') ? ' selected' : '') + '>' + l[1] + '</option>'; }).join('') + '</select>' +
-          '<label>What to pitch</label><textarea rows="4" class="pb_p" data-cat="' + esc(c) + '">' + esc(p.pitch) + '</textarea></details>';
+          '<label>What the first message says (copy from BlueTick, so the bot continues the same chat)</label><textarea rows="4" class="pb_x" data-cat="' + esc(c) + '">' + esc(p.text) + '</textarea>' +
+          '<label>What to pitch in the chat</label><textarea rows="4" class="pb_p" data-cat="' + esc(c) + '">' + esc(p.pitch) + '</textarea></details>';
       }).join('') + '<button class="btn" style="width:100%;margin-top:12px" onclick="savePlaybook(this)">Save pitches</button>';
   }).catch(fail);
 }
@@ -661,7 +662,7 @@ function savePlaybook(btn) {
   var o = {};
   document.querySelectorAll('.pb_t').forEach(function (i) {
     var c = i.dataset.cat, q = function (cls) { return document.querySelector('.' + cls + '[data-cat="' + c + '"]').value; };
-    o[c] = { template: i.value.trim(), language: q('pb_l'), pitch: q('pb_p').trim() };
+    o[c] = { template: i.value.trim(), language: q('pb_l'), text: q('pb_x').trim(), pitch: q('pb_p').trim() };
   });
   btn.disabled = true;
   call('playbookSave', { playbook: o }).then(function (r) { btn.disabled = false; toast(r.message); })

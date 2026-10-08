@@ -596,6 +596,39 @@ const tests = {
     const book = api('playbook').playbook;
     assert(book['Builder'].pitch.includes('seamless') || book['Builder'].pitch.includes('CCTV'), 'builder default pitch covers flooring, automation, CCTV');
     assert(book['End Client'].pitch.includes('their own home'), 'end client default pitch is about our products');
+  },
+  'natural chat: never asks the same question twice, knows what the template said, hands interested leads to the team'() {
+    const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES } }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    upsert(env, CUST, { Category: 'Applicator', Name: 'Ramesh', Status: 'Contacted' });
+    // the opening template is in the history, so the bot knows what the lead was told
+    api('playbookSave', { playbook: { Applicator: { template: 'amitek_applicator', language: 'hi', pitch: 'x',
+      text: 'Namaste {{1}} ji. Would you like to sell under your own brand? We do third party manufacturing.' } } });
+    env.ctx.addMessage_(CUST, 'out', 'campaign', env.ctx.campaignText_({ Name: 'Applicators', Template: 'amitek_applicator', 'Message Text': '' }, { Category: 'Applicator', Name: 'Ramesh' }), '');
+    assert(env.ctx.history_(CUST, 5)[0].body.includes('third party manufacturing'));
+    // 1st reply asks the city
+    env.claude.push(say('Achha ji! Aap kis city mein kaam karte hain?'));
+    post(env, payload([text(CUST, 'haan batao thoda')]));
+    assert(texts(env).pop().text.includes('city'));
+    // lead dodges; the model tries to ask it again, the guard makes it rewrite
+    env.claude.push(say('Aap kis city mein kaam karte hain ji?'), say('Koi baat nahi ji, ek baat bataiye: apna brand pehle se hai?'));
+    const calls = env.claudeCalls.length;
+    post(env, payload([text(CUST, 'pehle ye batao kitna minimum lagta hai')]));
+    assert.strictEqual(env.claudeCalls.length - calls, 2, 'one rewrite');
+    const sent = texts(env).pop().text;
+    assert(!sent.includes('city') && sent.includes('brand'), sent);
+    const note = JSON.stringify(env.claudeCalls[env.claudeCalls.length - 1].body.messages.slice(-1));
+    assert(note.includes('repeats a question'), 'the model is told why');
+    // interested: hot handoff, the team is alerted
+    env.claude.push(tool('handoff_to_sales', { reason: 'Wants details', summary: 'Applicator interested in private label', priority: 'hot' }), say('Bilkul ji, hamari team aapko jaldi call karegi 🙏'));
+    post(env, payload([text(CUST, 'Yes, send details')]));
+    assert.strictEqual(lead(env, CUST).Status, 'Hot');
+    assert(texts(env).some(m => m.to === SALES && m.text.includes('HOT LEAD')));
+    const sys = JSON.stringify(env.claudeCalls[env.claudeCalls.length - 1].body.system);
+    assert(sys.includes('NEVER repeat a question') && sys.includes('real person'));
+    // questionWords_ catches rewordings but not different questions
+    assert(env.ctx.repeatsQuestion_('Aap kis city mein hain?', [{ direction: 'out', sender: 'bot', body: 'Kis city mein kaam karte hain aap?' }]));
+    assert(!env.ctx.repeatsQuestion_('Kitne sq ft ka area hai?', [{ direction: 'out', sender: 'bot', body: 'Aap kis city mein hain?' }]));
   }
 };
 

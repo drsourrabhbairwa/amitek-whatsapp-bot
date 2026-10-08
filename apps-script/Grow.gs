@@ -119,7 +119,7 @@ function templateBody_(c, l) {
 }
 
 function campaignText_(c, l) {
-  var text = String(c['Message Text'] || '[Template ' + c['Template'] + ']');
+  var text = String(c['Message Text'] || openingText_(l) || '[Template ' + c['Template'] + ']');
   return '[Campaign: ' + c['Name'] + '] ' + text.replace(/\{\{1\}\}/g, firstName_(l));
 }
 
@@ -379,26 +379,26 @@ function weeklyLearn_() {
 // ===================================================================== pitch by category
 /** What each type of lead is offered: the opening template and what the bot steers the chat towards. Editable in Settings. */
 var PLAYBOOK_DEFAULTS = {
-  'Applicator': { template: 'amitek_applicator', pitch:
+  'Applicator': { template: 'amitek_applicator', text: 'Namaste {{1}} ji. This is Amitek Waterproofing, Jaipur (APP Paints Chemicals Pvt. Ltd.). 25+ years of manufacturing and field expertise, 1000+ contractors and dealers across India and overseas, Govt. Approved Star Export House. Would you like to sell waterproofing products under your own brand name? We do third party manufacturing, and also offer Amitek products at special applicator rates. Shall we send the details?', pitch:
     'Main offer: third-party manufacturing (private label). Amitek manufactures waterproofing and coating products under the ' +
     "applicator's own brand name, so they can sell and apply their own brand. Ask whether they already have (or want) their own " +
     'brand, which products they need and roughly how much per month. Also offer Amitek products at applicator rates for their sites. ' +
     'Minimum quantity, rates and timelines come from the team: call handoff_to_sales when they are interested.' },
-  'End Client': { template: 'amitek_end_client', pitch:
+  'End Client': { template: 'amitek_end_client', text: 'Namaste {{1}} ji. This is Amitek Waterproofing, Jaipur. We make waterproofing products for roof and terrace leaks, wall dampness, bathrooms and water tanks. 25+ years of experience. Do you have a leakage or dampness problem at your home or building? Tell us and we will suggest the right product.', pitch:
     'Main offer: Amitek products for their own home or building (roof and terrace, walls and damp, bathrooms, water tanks). ' +
     'First find the problem (where, how big, leaking now or not), then recommend the right product from the knowledge. ' +
     'Offer a site visit or an applicator through the team (handoff_to_sales).' },
-  'Builder': { template: 'amitek_builder', pitch:
+  'Builder': { template: 'amitek_builder', text: 'Namaste {{1}} ji. This is Amitek, Jaipur (APP Paints Chemicals Pvt. Ltd.). For your projects we offer, from one partner: waterproofing systems, seamless flooring, home automation, security cameras (CCTV) and our other solutions. Shall we send details and a project rate for any current or upcoming project?', pitch:
     'Main offer: complete solutions for their projects: waterproofing systems, seamless flooring, home automation, ' +
     'security cameras (CCTV) and our other building solutions. Ask which project, its stage and city, and which of these they ' +
     'need. A meeting or site visit goes to the team (handoff_to_sales).' },
-  'Architect': { template: 'amitek_builder', pitch:
+  'Architect': { template: 'amitek_builder', text: 'Namaste {{1}} ji. This is Amitek, Jaipur (APP Paints Chemicals Pvt. Ltd.). For your projects we offer, from one partner: waterproofing systems, seamless flooring, home automation, security cameras (CCTV) and our other solutions. Shall we send details and a project rate for any current or upcoming project?', pitch:
     'Main offer: solutions to specify in their projects: waterproofing systems, seamless flooring, home automation, security ' +
     'cameras (CCTV) and our other building solutions. Offer product specs and a meeting with the team (handoff_to_sales).' },
-  'Contractor': { template: 'amitek_contractor', pitch:
+  'Contractor': { template: 'amitek_contractor', text: 'Namaste {{1}} ji. This is Amitek Waterproofing, Jaipur. We supply waterproofing and construction chemicals for your sites, at project rates and with application support. Which site are you working on right now? Shall we send the product details?', pitch:
     'Main offer: Amitek waterproofing and construction chemicals for their sites at project rates, with application support. ' +
     'Ask about current sites, area and timeline; rates come from the team (handoff_to_sales).' },
-  'Dealer': { template: 'amitek_dealer', pitch:
+  'Dealer': { template: 'amitek_dealer', text: 'Namaste {{1}} ji. This is Amitek Waterproofing, Jaipur. We are adding dealers in your area for waterproofing, coatings and construction chemicals. Would you like to know about an Amitek dealership?', pitch:
     'Main offer: Amitek dealership for their area (waterproofing, coatings and construction chemicals). Ask about their shop, ' +
     'area and current brands; dealer terms come from the team (handoff_to_sales).' }
 };
@@ -411,18 +411,23 @@ function playbook_() {
     var d = PLAYBOOK_DEFAULTS[c] || {}, s = saved[c] || {};
     out[c] = { template: String(s.template !== undefined ? s.template : (d.template || '')).trim(),
                language: String(s.language || d.language || 'hi').trim(),
+               text: String(s.text !== undefined ? s.text : (d.text || '')).trim(),
                pitch: String(s.pitch !== undefined ? s.pitch : (d.pitch || '')).trim() };
   });
   return out;
 }
+
+/** What the first (template) message said to this lead, so the bot continues the same conversation. */
+function openingText_(l) { return (playbook_()[String(l['Category'] || '')] || {}).text || ''; }
 
 /** Added to the bot's instructions for a lead, so each category hears its own offer. */
 function pitchFor_(lead) {
   var cat = String((lead && lead['Category']) || '');
   var p = playbook_()[cat];
   if (!p || !p.pitch) return '';
-  return '\n\n<pitch customer_type="' + cat + '">\nWhen it fits the conversation, steer towards this offer ' +
-         '(only claims from the knowledge, never invent prices):\n' + p.pitch + '\n</pitch>';
+  return '\n\n<pitch customer_type="' + cat + '">\nAmitek\'s first message to this person already made this offer, so talking about it is expected ' +
+         'and is allowed even in gentle mode (it overrides "no offers"). Steer the chat towards it naturally, with claims only ' +
+         'from the knowledge and no invented prices:\n' + p.pitch + '\n</pitch>';
 }
 
 // ===================================================================== tell the bot who to message, and when
@@ -612,7 +617,7 @@ var GROW_ACTIONS = {
       var p = a.playbook[cat] || {}, tpl = String(p.template || '').trim();
       if (tpl && !/^[a-z0-9_]+$/.test(tpl)) bad.push(cat);
       o[cat] = { template: tpl, language: /^[a-z]{2}(_[A-Z]{2})?$/.test(String(p.language || '')) ? p.language : 'en',
-                 pitch: String(p.pitch || '').trim().slice(0, 2000) };
+                 text: String(p.text || '').trim().slice(0, 1024), pitch: String(p.pitch || '').trim().slice(0, 2000) };
     });
     if (bad.length) return { error: 'Template names use small letters, numbers and _ only. Check: ' + bad.join(', ') };
     writeSettings_({ CATEGORY_PLAYBOOK: JSON.stringify(o) });
