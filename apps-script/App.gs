@@ -11,7 +11,7 @@ function appPage_() {
 }
 
 var EDITABLE = ['Name', 'Business', 'Category', 'Tier', 'City', 'Requirement', 'Area sqft', 'Assigned To', 'Follow-up Note'];
-var APP_SETTINGS = ['SEND_ENABLED', 'BOT_ENABLED', 'BOT_MODE', 'SALES_WHATSAPP'];
+var APP_SETTINGS = ['SEND_ENABLED', 'BOT_ENABLED', 'BOT_MODE', 'SALES_WHATSAPP', 'TEAM_ROUTING'];
 
 /** Single entry point for the phone app: api(pin, action, argsJson) -> JSON string. */
 function api(pin, action, argsJson) {
@@ -291,6 +291,19 @@ var APP_ACTIONS = {
       var v = String(a[k]);
       if (k === 'BOT_MODE' && ['gentle', 'sales'].indexOf(v) < 0) return;
       if (k === 'SALES_WHATSAPP') v = v ? normPhone_(v) : '';
+      if (k === 'TEAM_ROUTING') {
+        var o = {}, bad = [];
+        try { o = JSON.parse(v || '{}') || {}; } catch (err) { return; }
+        Object.keys(o).forEach(function (cat) {
+          if (CATEGORIES.indexOf(cat) < 0 && cat !== 'All') { delete o[cat]; return; }
+          var nums = String(o[cat] || '').split(/[,;\s]+/).filter(Boolean).map(normPhone_);
+          nums.forEach(function (p) { if (p.length < 12) bad.push(p); });
+          o[cat] = nums.filter(function (p) { return p.length >= 12; }).join(', ');
+          if (!o[cat]) delete o[cat];
+        });
+        if (bad.length) throw new Error('Check these numbers: ' + bad.join(', '));
+        v = Object.keys(o).length ? JSON.stringify(o) : '';
+      }
       s[k] = v;
     });
     writeSettings_(s);
@@ -300,7 +313,9 @@ var APP_ACTIONS = {
 
 function botState_() {
   return { sendEnabled: sendEnabled_(), botEnabled: botEnabled_(), mode: setting_('BOT_MODE'),
-           salesWhatsapp: String(setting_('SALES_WHATSAPP')), model: aiModel_(), provider: aiProvider_() };
+           salesWhatsapp: String(setting_('SALES_WHATSAPP')), model: aiModel_(), provider: aiProvider_(),
+           team: (function () { var r = teamRouting_(), o = {}; Object.keys(r).forEach(function (c) { o[c] = r[c].join(', '); }); return o; })(),
+           categories: CATEGORIES };
 }
 
 function leadLog_(phone, limit) {

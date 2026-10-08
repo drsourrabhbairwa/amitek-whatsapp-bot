@@ -483,6 +483,32 @@ const tests = {
     api('knowledgeDelete', { row: doc.row });
     assert(!api('knowledge').docs.some(d => d.title === 'Company profile'));
   }
+  ,
+  'team by category: each member gets alerts for their leads, commands work from any team number'() {
+    const APP = '919700000001', DEAL = '919700000002';
+    const env = load(Object.assign({}, BASE, { claude: [
+      tool('update_lead', { category: 'Applicator', city: 'Jaipur' }),
+      tool('handoff_to_sales', { reason: 'Wants rate', summary: '2000 sqft terrace', priority: 'hot' }, 'tu2'), say('Ji, team call karegi 🙏')] }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    assert(api('saveSettings', { TEAM_ROUTING: JSON.stringify({ Applicator: '9700000001', Dealer: '97000 00002, 123' }) }).error.includes('123'));
+    api('saveSettings', { TEAM_ROUTING: JSON.stringify({ Applicator: '9700000001', Dealer: '9700000002', Hacker: '9711111111' }) });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(api('settings').bot.team)), { Applicator: APP, Dealer: DEAL });
+    post(env, payload([text(CUST, 'main applicator hoon, rate batao')]));
+    const hot = texts(env).filter(m => m.text.includes('HOT LEAD')).map(m => m.to).sort();
+    assert.deepStrictEqual(hot, [SALES, APP].sort(), 'applicator lead goes to the main salesperson and the applicator person only');
+    // a team member's message is a command, not a new lead
+    post(env, payload([text(DEAL, 'LIST')]));
+    assert(!lead(env, DEAL), 'team numbers never become leads');
+    const list = texts(env).filter(m => m.to === DEAL).pop().text;
+    assert(!list.includes('+' + CUST), 'dealer person does not see applicator leads');
+    post(env, payload([text(APP, 'LIST')]));
+    assert(texts(env).filter(m => m.to === APP).pop().text.includes('+' + CUST));
+    post(env, payload([text(APP, 'DONE ' + CUST.slice(-10) + ' called')]));
+    assert.strictEqual(lead(env, CUST).Status, 'Contacted');
+    // daily summary: one per team member
+    env.sent.length = 0; env.ctx.dailySummary();
+    assert.deepStrictEqual(texts(env).map(m => m.to).sort(), [SALES, APP, DEAL].sort());
+  }
 };
 
 

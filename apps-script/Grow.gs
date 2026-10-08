@@ -58,10 +58,10 @@ function cleanFilter_(f) {
 }
 
 /** Why a lead must not get a campaign message, or '' when it may. */
-function campaignBlock_(l, sales) {
+function campaignBlock_(l, team) {
   var phone = String(l['Phone'] || '');
   if (!MOBILE_RE.test(phone)) return 'not a mobile number';
-  if (phone === sales) return 'salesperson';
+  if ((team || []).indexOf(phone) >= 0) return 'our team';
   if (l['Opt-in'] === 'Opted out' || l['Status'] === 'Opted out') return 'said STOP';
   if (l['Status'] === 'Won' || l['Status'] === 'Lost') return 'closed';
   return '';
@@ -69,14 +69,14 @@ function campaignBlock_(l, sales) {
 
 function audience_(filter, excludePhones, since) {
   var f = cleanFilter_(filter);
-  var sales = normPhone_(setting_('SALES_WHATSAPP'));
+  var team = teamPhones_();
   var lower = function (a) { return a.map(function (x) { return x.toLowerCase(); }); };
   var cats = lower(f.categories), cities = lower(f.cities), states = lower(f.states);
   var seen = {};
   var out = leadsFull_().filter(function (l) {
     var phone = String(l['Phone'] || '');
     if (!phone || seen[phone] || (excludePhones && excludePhones[phone])) return false;
-    if (campaignBlock_(l, sales)) return false;
+    if (campaignBlock_(l, team)) return false;
     if (f.canMessageOnly && 'Can Message' in l && String(l['Can Message']).toLowerCase() === 'no') return false;
     // "new only" = we never messaged them and they never wrote to us
     if (f.newOnly && (asDate_(l['Last Outbound']) || asDate_(l['Last Inbound']))) return false;
@@ -285,11 +285,10 @@ function chatDigest_(days, maxChars) {
   var since = Date.now() - days * 86400000;
   var start = Math.max(2, last - 5000);
   var rows = sh.getRange(start, 1, last - start + 1, MESSAGE_COLS.length).getValues();
-  var sales = normPhone_(setting_('SALES_WHATSAPP'));
   var byPhone = {}, order = [];
   rows.forEach(function (r) {
     var t = asDate_(r[0]), phone = String(r[1]);
-    if (!t || t.getTime() < since || !phone || phone === sales) return;
+    if (!t || t.getTime() < since || !phone || isTeam_(phone)) return;
     if (!byPhone[phone]) { byPhone[phone] = { lines: [], hasIn: false, last: 0 }; order.push(phone); }
     var who = r[2] === 'in' ? 'Customer' : r[3] === 'human' ? 'Amitek team' : r[3] === 'campaign' ? 'Campaign message' : 'Bot';
     byPhone[phone].lines.push(who + ': ' + String(r[4]).slice(0, 500));

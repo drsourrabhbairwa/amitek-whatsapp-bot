@@ -622,6 +622,12 @@ function renderSettings() {
       '<button id="m_sales" class="' + (b.mode === 'sales' ? 'on' : '') + '" onclick="mode(\'sales\')">Sales head</button></div></div>' +
       '<div class="switch" style="display:block"><div>Salesperson WhatsApp<small>Gets hot lead alerts and the 9 AM summary.</small></div>' +
       '<input id="s_sales" type="tel" value="' + esc(b.salesWhatsapp) + '" placeholder="98xxxxxxxx" style="margin-top:8px"></div>' +
+      '<details class="switch" style="display:block"' + (Object.keys(b.team || {}).length ? ' open' : '') + '><summary style="cursor:pointer">Team by category' +
+      '<small>Who else gets alerts for each type of lead. The main salesperson still gets everything. Several numbers: separate with commas.</small></summary>' +
+      ['All'].concat(b.categories || []).map(function (c) {
+        return '<label class="info" style="display:block;margin:10px 0 4px">' + (c === 'All' ? 'Every lead (e.g. the owner)' : esc(c)) + '</label>' +
+          '<input type="text" inputmode="tel" class="s_team" data-cat="' + esc(c) + '" value="' + esc((b.team || {})[c] || '') + '" placeholder="98xxxxxxxx, 97xxxxxxxx">';
+      }).join('') + '<div class="info" style="margin-top:8px">They can reply DONE / LATER / WON / LOST / LIST too; LIST shows only their leads.</div></details>' +
       '<button class="btn" style="width:100%;margin-top:6px" onclick="saveSettings(this)">Save</button></div>' +
       '<h2>This phone</h2><div class="card">' +
       (GAS ? '<div class="info" style="margin-bottom:10px">Tip: in Chrome tap ⋮ then "Add to Home screen" to open this like an app.</div>' :
@@ -632,11 +638,15 @@ function renderSettings() {
     if ($('k_provider')) providerChanged();
   }).catch(fail);
 }
+function teamJson() {
+  var o = {}; document.querySelectorAll('.s_team').forEach(function (i) { if (i.value.trim()) o[i.dataset.cat] = i.value.trim(); });
+  return JSON.stringify(o);
+}
 function mode(m) { S.mode = m; $('m_gentle').classList.toggle('on', m === 'gentle'); $('m_sales').classList.toggle('on', m === 'sales'); }
 function saveSettings(btn) {
   btn.disabled = true;
   call('saveSettings', { SEND_ENABLED: $('s_send').checked ? 'true' : 'false', BOT_ENABLED: $('s_bot').checked ? 'true' : 'false',
-                         BOT_MODE: S.mode, SALES_WHATSAPP: $('s_sales').value.trim() })
+                         BOT_MODE: S.mode, SALES_WHATSAPP: $('s_sales').value.trim(), TEAM_ROUTING: teamJson() })
     .then(function (r) { btn.disabled = false; toast('Settings saved'); renderSettings(); })
     .catch(function (e) { btn.disabled = false; fail(e); });
 }

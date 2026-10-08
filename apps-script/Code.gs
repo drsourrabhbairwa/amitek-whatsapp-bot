@@ -38,7 +38,8 @@ var DEFAULT_SETTINGS = {
   BOT_MODE: 'gentle',                // gentle = phase 1 polite replies, sales = full sales head
   SEND_ENABLED: 'false',             // false = dry run: replies are written to Messages but not sent
   BOT_ENABLED: 'true',               // false = the bot stays quiet; the team replies (alerts still work)
-  SALES_WHATSAPP: '',                // salesperson WhatsApp, e.g. 919812345678
+  SALES_WHATSAPP: '',                // main salesperson / manager WhatsApp, e.g. 919812345678 (gets every alert)
+  TEAM_ROUTING: '',                  // JSON {"Applicator": "98..., 98...", "Dealer": "98..."}: who else gets alerts for each lead category
   CLAUDE_MODEL: 'claude-sonnet-5-5',
   AI_PROVIDER: 'claude',             // claude for real use; gemini, groq or openrouter for free testing
   AI_MODEL: '',                      // model for gemini/groq/openrouter; blank = that provider's default below
@@ -596,7 +597,7 @@ function runTool_(name, args, result) {
 // ===================================================================== bot logic
 function handleEcho_(e) {
   if (!e.phone || messageSeen_(e.id)) return;  // our own message coming back, or a duplicate
-  if (e.phone === normPhone_(setting_('SALES_WHATSAPP'))) return;  // alerts we sent to our own salesperson
+  if (isTeam_(e.phone)) return;  // alerts we sent to our own team
   var botSaid = history_(e.phone, 5).some(function (h) { return h.sender === 'bot' && h.body === e.text; });
   if (botSaid) return;  // the bot's own reply, echoed back without a matching id
   addMessage_(e.phone, 'out', 'human', e.text, e.id);
@@ -606,9 +607,8 @@ function handleEcho_(e) {
 
 function handleInbound_(m) {
   if (!m.phone) return;
-  var sales = normPhone_(setting_('SALES_WHATSAPP'));
-  if (sales && m.phone === sales) {
-    if (addMessage_(m.phone, 'in', 'sales', m.text, m.id)) waText_(m.phone, salesCommand_(m.text));
+  if (isTeam_(m.phone)) {
+    if (addMessage_(m.phone, 'in', 'sales', m.text, m.id)) waText_(m.phone, salesCommand_(m.text, m.phone));
     return;
   }
   if (!addMessage_(m.phone, 'in', 'lead', m.text, m.id)) return;  // duplicate delivery
@@ -692,10 +692,48 @@ function alertSales_(text) {
   waText_(to, text);
 }
 
+// ---- team: the main salesperson gets everything; others get the leads of their categories
+function teamRouting_() {
+  var o = {};
+  try { o = JSON.parse(setting_('TEAM_ROUTING') || '{}') || {}; } catch (err) { o = {}; }
+  var out = {};
+  Object.keys(o).forEach(function (cat) {
+    var nums = String(o[cat] || '').split(/[,;\s]+/).map(normPhone_).filter(function (p) { return p.length >= 12; });
+    if (nums.length) out[cat] = nums;
+  });
+  return out;
+}
+function teamPhones_() {
+  var all = {}, main = normPhone_(setting_('SALES_WHATSAPP'));
+  if (main) all[main] = true;
+  var r = teamRouting_();
+  Object.keys(r).forEach(function (c) { r[c].forEach(function (p) { all[p] = true; }); });
+  return Object.keys(all);
+}
+function isTeam_(phone) { return !!phone && teamPhones_().indexOf(String(phone)) >= 0; }
+/** Who hears about this lead: the main salesperson plus everyone set for its category (and for "All"). */
+function recipientsFor_(lead) {
+  var r = teamRouting_(), main = normPhone_(setting_('SALES_WHATSAPP'));
+  var list = (main ? [main] : []).concat(r[String(lead['Category'] || 'Other')] || [], r['All'] || []);
+  return list.filter(function (p, i) { return list.indexOf(p) === i; });
+}
+/** The categories a team member looks after ([] = the main salesperson, who sees everything). */
+function categoriesOf_(phone) {
+  if (!phone || phone === normPhone_(setting_('SALES_WHATSAPP'))) return [];
+  var r = teamRouting_();
+  if ((r['All'] || []).indexOf(phone) >= 0) return [];
+  return Object.keys(r).filter(function (c) { return r[c].indexOf(phone) >= 0; });
+}
+function alertLead_(lead, text) {
+  var to = recipientsFor_(lead);
+  if (!to.length) { console.warn('No team number set; alert: ' + text); return; }
+  to.forEach(function (p) { waText_(p, text); });
+}
+
 function notifySales_(lead, h) {
   var details = [lead['Category'], lead['City'], lead['Area sqft'] ? lead['Area sqft'] + ' sq ft' : '', lead['Requirement']]
       .filter(function (x) { return x && x !== 'Other'; }).join(' | ');
-  alertSales_('*' + (h.priority === 'hot' ? '🔥 HOT LEAD' : '📋 New lead for follow-up') + '*\n' + label_(lead) +
+  alertLead_(lead, '*' + (h.priority === 'hot' ? '🔥 HOT LEAD' : '📋 New lead for follow-up') + '*\n' + label_(lead) +
               (details ? '\n' + details : '') + '\n\n' + h.summary + '\n_Why now:_ ' + h.reason +
               '\n\nReply DONE ' + String(lead['Phone']).slice(-10) + ' after you call.');
 }
@@ -738,21 +776,31 @@ function hourlyCheck() {
       upsertLead_(phone, { 'Next Follow-up': now, 'Follow-up Note': 'Silent for ' + settingNum_('QUIET_DAYS') + '+ days' }, 'system');
     }
   });
-  var parts = [];
-  if (unanswered.length) parts.push('*⚠️ Waiting for a reply:*\n' + unanswered.map(function (l) { return '• ' + label_(l); }).join('\n'));
-  if (hot.length) parts.push('*🔥 Hot leads not contacted yet (>' + settingNum_('HOT_LEAD_SLA_HOURS') + 'h):*\n' +
-                             hot.map(function (l) { return '• ' + label_(l); }).join('\n'));
-  if (due.length) parts.push('*📅 Follow-up due now:*\n' + due.map(function (l) {
-    return '• ' + label_(l) + (l['Follow-up Note'] ? ' - ' + l['Follow-up Note'] : '');
-  }).join('\n'));
-  if (parts.length) alertSales_(parts.join('\n\n') + '\n\n_Reply DONE <number> after you call. HELP for commands._');
+  // one message per team member, with only the leads they look after
+  var box = {};
+  function add(list, key) {
+    list.forEach(function (l) {
+      recipientsFor_(l).forEach(function (p) { (box[p] = box[p] || { unanswered: [], hot: [], due: [] })[key].push(l); });
+    });
+  }
+  add(unanswered, 'unanswered'); add(hot, 'hot'); add(due, 'due');
+  Object.keys(box).forEach(function (p) {
+    var b = box[p], parts = [];
+    if (b.unanswered.length) parts.push('*⚠️ Waiting for a reply:*\n' + b.unanswered.map(function (l) { return '• ' + label_(l); }).join('\n'));
+    if (b.hot.length) parts.push('*🔥 Hot leads not contacted yet (>' + settingNum_('HOT_LEAD_SLA_HOURS') + 'h):*\n' +
+                                 b.hot.map(function (l) { return '• ' + label_(l); }).join('\n'));
+    if (b.due.length) parts.push('*📅 Follow-up due now:*\n' + b.due.map(function (l) {
+      return '• ' + label_(l) + (l['Follow-up Note'] ? ' - ' + l['Follow-up Note'] : '');
+    }).join('\n'));
+    if (parts.length) waText_(p, parts.join('\n\n') + '\n\n_Reply DONE <number> after you call. HELP for commands._');
+  });
   refreshBoard_();
   return { unanswered: unanswered.length, hot_overdue: hot.length, follow_ups_due: due.length };
 }
 
-function pendingReport_() {
+function pendingReport_(cats) {
   var now = new Date();
-  var active = activeLeads_();
+  var active = activeLeads_().filter(function (l) { return !cats || !cats.length || cats.indexOf(String(l['Category'] || 'Other')) >= 0; });
   var hot = active.filter(function (l) { return l['Status'] === 'Hot'; });
   var overdue = active.filter(function (l) { var d = asDate_(l['Next Follow-up']); return d && d <= now && l['Status'] !== 'Hot'; });
   var endOfDay = new Date(now.getTime() + 24 * 3600000);
@@ -775,7 +823,10 @@ function pendingReport_() {
 }
 
 function dailySummary() {
-  alertSales_(pendingReport_());
+  teamPhones_().forEach(function (p) {
+    var cats = categoriesOf_(p);
+    waText_(p, (cats.length ? '_Your leads: ' + cats.join(', ') + '_\n' : '') + pendingReport_(cats));
+  });
   refreshBoard_();
   weeklyLearn_();
 }
@@ -787,11 +838,11 @@ var HELP = '*Lead commands* (send to this number):\n' +
     'LOST 98xxxxxxxx reason - closed, not buying\n' +
     'LIST - everything pending';
 
-function salesCommand_(text) {
+function salesCommand_(text, from) {
   var parts = String(text).trim().split(/\s+/);
   var cmd = (parts[0] || '').toUpperCase();
   if (cmd === 'HELP' || cmd === '?') return HELP;
-  if (cmd === 'LIST' || cmd === 'PENDING') return pendingReport_();
+  if (cmd === 'LIST' || cmd === 'PENDING') return pendingReport_(categoriesOf_(from));
   if (['DONE', 'LATER', 'WON', 'LOST'].indexOf(cmd) < 0 || parts.length < 2) return 'Command not understood.\n\n' + HELP;
   var days = null, note = parts.slice(2).join(' ');
   if (cmd === 'LATER' && !isNaN(parseInt(parts[2], 10))) { days = parseInt(parts[2], 10); note = parts.slice(3).join(' '); }

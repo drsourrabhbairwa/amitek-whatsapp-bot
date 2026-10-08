@@ -67,6 +67,7 @@ WhatsApp only lets a business write first with a **template approved by Meta**.
   change history, and a reply box to answer as the team (the bot then stays quiet for that customer for 12 hours).
   WhatsApp allows typed replies only within 24 hours of the customer's last message.
 - **Leads**: search by name, number or city, filter by status. **Add**: add a walk-in or phone lead.
+- **Team by category** (Settings): give a WhatsApp number per lead category (Applicator, Dealer, …). That person gets alerts, the 9 AM summary and LIST for those leads only; the main salesperson still gets everything.
 - **Send**: campaigns and welcome messages. **Learn**: what the bot knows and what it learned.
 - **Settings**: setup checklist and keys, test mode, bot on/off, gentle or sales mode, salesperson number, PIN.
 
