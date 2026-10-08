@@ -11,7 +11,7 @@
  */
 
 var CAMPAIGN_COLS = ['ID', 'Name', 'Template', 'Language', 'Uses Name', 'Message Text', 'Filter', 'Status', 'Created',
-                     'Started', 'Finished', 'Total', 'Sent', 'Failed', 'Last Error'];
+                     'Started', 'Finished', 'Total', 'Sent', 'Failed', 'Last Error', 'Start At'];
 var CAMPAIGN_LOG_COLS = ['Time', 'Campaign ID', 'Phone', 'Result', 'Detail'];
 var LEARN_COLS = ['Time', 'Source', 'Title', 'Content', 'Why', 'Status'];
 var GROW_SHEETS = { campaigns: 'Campaigns', campaignLog: 'Campaign Log', learning: 'Learning' };
@@ -21,6 +21,7 @@ function growSheet_(name, cols) {
   var ss = ss_();
   var sh = ss.getSheetByName(name);
   if (!sh) { sh = ss.insertSheet(name); sh.appendRow(cols); }
+  else if (sh.getLastColumn() < cols.length) sh.getRange(1, 1, 1, cols.length).setValues([cols]);  // columns added in an update
   return sh;
 }
 function campaignsSheet_() { return growSheet_(GROW_SHEETS.campaigns, CAMPAIGN_COLS); }
@@ -134,6 +135,15 @@ function getCampaign_(id) {
   return rowsAsObjects_(campaignsSheet_(), CAMPAIGN_COLS).filter(function (c) { return String(c['ID']) === String(id); })[0] || null;
 }
 
+function newCampaign_(fields, status) {
+  var id = 'C' + campaignsSheet_().getLastRow() + '-' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyMMddHHmm').replace(/\D/g, '').slice(-8);
+  var base = { 'ID': id, 'Status': status || 'Draft', 'Created': new Date(), 'Total': 0, 'Sent': 0, 'Failed': 0 };
+  campaignsSheet_().appendRow(CAMPAIGN_COLS.map(function (k) {
+    return base[k] !== undefined ? base[k] : (fields[k] !== undefined ? fields[k] : '');
+  }));
+  return id;
+}
+
 function ensureCampaignTimer_(on) {
   var have = ScriptApp.getProjectTriggers().filter(function (t) { return t.getHandlerFunction() === 'campaignTick'; });
   if (on && !have.length) ScriptApp.newTrigger('campaignTick').timeBased().everyMinutes(5).create();
@@ -148,14 +158,25 @@ function campaignTick() {
 }
 
 function campaignTick_() {
-  var running = rowsAsObjects_(campaignsSheet_(), CAMPAIGN_COLS).filter(function (c) { return c['Status'] === 'Running'; });
-  if (!running.length) { ensureCampaignTimer_(false); return { sent: 0, reason: 'nothing running' }; }
+  var all = rowsAsObjects_(campaignsSheet_(), CAMPAIGN_COLS);
+  var running = all.filter(function (c) { return c['Status'] === 'Running'; });
+  var waiting = all.filter(function (c) { return c['Status'] === 'Scheduled'; });
+  if (!running.length && !waiting.length) { ensureCampaignTimer_(false); return { sent: 0, reason: 'nothing running' }; }
   if (!sendEnabled_()) return { sent: 0, reason: 'test mode' };  // waits; resumes when sending is switched on
+  var now = new Date();
+  waiting.forEach(function (c) {  // scheduled campaigns start when their time comes
+    var at = asDate_(c['Start At']);
+    if (at && at > now) return;
+    setCampaign_(c, { 'Status': 'Running', 'Started': now, 'Last Error': '' });
+    running.push(c);
+    alertSales_('📣 Campaign "' + c['Name'] + '" has started sending.');
+  });
+  if (!running.length) return { sent: 0, reason: 'scheduled' };
   var room = Number(growSetting_('CAMPAIGN_DAILY_LIMIT')) - sentLast24h_();
   if (room <= 0) return { sent: 0, reason: 'daily limit' };
   // welcome (always-on) campaigns first, so new leads are greeted quickly; then the oldest bulk campaign
   var keep = function (c) { return cleanFilter_(JSON.parse(c['Filter'] || '{}')).keepOn; };
-  var order = running.filter(keep).concat(running.filter(function (c) { return !keep(c); }).slice(0, 1));
+  var order = running.filter(keep).concat(running.filter(function (c) { return !keep(c); }));
   var total = { sent: 0, failed: 0 };
   var perTick = Number(growSetting_('CAMPAIGN_BATCH')) || 40;
   order.forEach(function (c) {
@@ -164,7 +185,9 @@ function campaignTick_() {
     var r = sendBatch_(c, left);
     total.sent += r.sent; total.failed += r.failed;
   });
-  if (!rowsAsObjects_(campaignsSheet_(), CAMPAIGN_COLS).some(function (x) { return x['Status'] === 'Running'; })) ensureCampaignTimer_(false);
+  if (!rowsAsObjects_(campaignsSheet_(), CAMPAIGN_COLS).some(function (x) { return x['Status'] === 'Running' || x['Status'] === 'Scheduled'; })) {
+    ensureCampaignTimer_(false);
+  }
   return total;
 }
 
@@ -353,6 +376,212 @@ function weeklyLearn_() {
 }
 
 // ===================================================================== app actions
+// ===================================================================== pitch by category
+/** What each type of lead is offered: the opening template and what the bot steers the chat towards. Editable in Settings. */
+var PLAYBOOK_DEFAULTS = {
+  'Applicator': { template: 'amitek_applicator', pitch:
+    'Main offer: third-party manufacturing (private label). Amitek manufactures waterproofing and coating products under the ' +
+    "applicator's own brand name, so they can sell and apply their own brand. Ask whether they already have (or want) their own " +
+    'brand, which products they need and roughly how much per month. Also offer Amitek products at applicator rates for their sites. ' +
+    'Minimum quantity, rates and timelines come from the team: call handoff_to_sales when they are interested.' },
+  'End Client': { template: 'amitek_end_client', pitch:
+    'Main offer: Amitek products for their own home or building (roof and terrace, walls and damp, bathrooms, water tanks). ' +
+    'First find the problem (where, how big, leaking now or not), then recommend the right product from the knowledge. ' +
+    'Offer a site visit or an applicator through the team (handoff_to_sales).' },
+  'Builder': { template: 'amitek_builder', pitch:
+    'Main offer: complete solutions for their projects: waterproofing systems, seamless flooring, home automation, ' +
+    'security cameras (CCTV) and our other building solutions. Ask which project, its stage and city, and which of these they ' +
+    'need. A meeting or site visit goes to the team (handoff_to_sales).' },
+  'Architect': { template: 'amitek_builder', pitch:
+    'Main offer: solutions to specify in their projects: waterproofing systems, seamless flooring, home automation, security ' +
+    'cameras (CCTV) and our other building solutions. Offer product specs and a meeting with the team (handoff_to_sales).' },
+  'Contractor': { template: 'amitek_contractor', pitch:
+    'Main offer: Amitek waterproofing and construction chemicals for their sites at project rates, with application support. ' +
+    'Ask about current sites, area and timeline; rates come from the team (handoff_to_sales).' },
+  'Dealer': { template: 'amitek_dealer', pitch:
+    'Main offer: Amitek dealership for their area (waterproofing, coatings and construction chemicals). Ask about their shop, ' +
+    'area and current brands; dealer terms come from the team (handoff_to_sales).' }
+};
+
+function playbook_() {
+  var saved = {};
+  try { saved = JSON.parse(setting_('CATEGORY_PLAYBOOK') || '{}') || {}; } catch (err) { saved = {}; }
+  var out = {};
+  CATEGORIES.forEach(function (c) {
+    var d = PLAYBOOK_DEFAULTS[c] || {}, s = saved[c] || {};
+    out[c] = { template: String(s.template !== undefined ? s.template : (d.template || '')).trim(),
+               language: String(s.language || d.language || 'hi').trim(),
+               pitch: String(s.pitch !== undefined ? s.pitch : (d.pitch || '')).trim() };
+  });
+  return out;
+}
+
+/** Added to the bot's instructions for a lead, so each category hears its own offer. */
+function pitchFor_(lead) {
+  var cat = String((lead && lead['Category']) || '');
+  var p = playbook_()[cat];
+  if (!p || !p.pitch) return '';
+  return '\n\n<pitch customer_type="' + cat + '">\nWhen it fits the conversation, steer towards this offer ' +
+         '(only claims from the knowledge, never invent prices):\n' + p.pitch + '\n</pitch>';
+}
+
+// ===================================================================== tell the bot who to message, and when
+var CAT_WORDS = [
+  ['End Client', /\b(end ?clients?|home ?owners?|house ?owners?|customers?|grahak)\b/],
+  ['Applicator', /\bapplicat\w*/], ['Contractor', /\b(contractors?|thekedar\w*)\b/],
+  ['Builder', /\b(builders?|developers?)\b/], ['Architect', /\b(architects?|interior\w*)\b/],
+  ['Dealer', /\b(dealers?|distributors?|retailers?|shops?|dukaan\w*)\b/], ['Manufacturer', /\bmanufacturers\b/]
+];
+var DAY_WORDS = { sunday: 0, sun: 0, ravivar: 0, raviwar: 0, itwar: 0, monday: 1, mon: 1, somvar: 1, somwar: 1,
+  tuesday: 2, tue: 2, tues: 2, mangalvar: 2, mangalwar: 2, wednesday: 3, wed: 3, budhvar: 3, budhwar: 3,
+  thursday: 4, thu: 4, thurs: 4, guruvar: 4, guruwar: 4, veervar: 4, friday: 5, fri: 5, shukravar: 5, shukrawar: 5,
+  saturday: 6, sat: 6, shanivar: 6, shaniwar: 6 };
+var MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+var IST_MS = 330 * 60000;
+
+/** India date parts of a moment (the script may run in another time zone). */
+function ist_(d) { var x = new Date(d.getTime() + IST_MS); return { y: x.getUTCFullYear(), m: x.getUTCMonth(), d: x.getUTCDate(), wd: x.getUTCDay() }; }
+function istDate_(y, m, d, h, min) { return new Date(Date.UTC(y, m, d, h, min || 0) - IST_MS); }
+
+/** "monday 11 baje", "kal", "15 oct 4 pm", "abhi" -> a Date (null = now). Default time 10 AM. */
+function parseWhen_(t, now) {
+  var today = ist_(now), day = null;
+  if (/\b(abhi|now|turant|right away|immediately)\b/.test(t)) return null;
+  var tm = t.match(/\b(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm|baje|bje)\b/);
+  var hour = 10, min = 0;
+  if (tm) {
+    hour = parseInt(tm[1], 10) % 24; min = parseInt(tm[2] || '0', 10);
+    if (tm[3] === 'pm' && hour < 12) hour += 12;
+    if (tm[3] === 'am' && hour === 12) hour = 0;
+    if (/ba?je/.test(tm[3]) && hour >= 1 && hour <= 7 && !/subah|morning/.test(t)) hour += 12;  // "4 baje" = 4 PM
+    if (/\b(shaam|sham|evening|raat)\b/.test(t) && hour < 12) hour += 12;
+  }
+  var mDate = t.match(/\b(\d{1,2})\s*(?:st|nd|rd|th)?\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*/) ||
+              t.match(/\b(\d{1,2})[\/-](\d{1,2})(?:[\/-]\d{2,4})?\b/);
+  if (mDate) {
+    var mon = isNaN(mDate[2]) ? MONTHS.indexOf(mDate[2]) : parseInt(mDate[2], 10) - 1;
+    day = { y: today.y, m: mon, d: parseInt(mDate[1], 10) };
+    if (istDate_(day.y, day.m, day.d, 23, 59) < now) day.y++;
+  } else if (/\b(parso|parson|day after tomorrow)\b/.test(t)) { day = { y: today.y, m: today.m, d: today.d + 2 };
+  } else if (/\b(kal|tomorrow|tmrw)\b/.test(t)) { day = { y: today.y, m: today.m, d: today.d + 1 };
+  } else if (/\b(aaj|today)\b/.test(t)) { day = { y: today.y, m: today.m, d: today.d };
+  } else {
+    var w = Object.keys(DAY_WORDS).filter(function (k) { return new RegExp('\\b' + k + '\\b').test(t); })[0];
+    if (w) {
+      var add = (DAY_WORDS[w] - today.wd + 7) % 7;
+      if (add === 0 && istDate_(today.y, today.m, today.d, hour, min) <= now) add = 7;
+      day = { y: today.y, m: today.m, d: today.d + add };
+    }
+  }
+  if (!day && !tm) return null;
+  if (!day) day = { y: today.y, m: today.m, d: today.d };
+  var at = istDate_(day.y, day.m, day.d, hour, min);
+  return at <= now ? null : at;
+}
+
+/** Reads a plain request ("applicators ko monday 11 baje, builders ko kal") into who gets which template, and when. */
+function readRequest_(text, now) {
+  var t = ' ' + String(text || '').toLowerCase() + ' ';
+  var all = /\b(all|sabko|sab ko|sabhi|everyone|every category|har category)\b/.test(t);
+  var book = playbook_();
+  var cats = all ? CATEGORIES.filter(function (c) { return book[c] && book[c].template; })
+                 : CAT_WORDS.filter(function (cw) { return cw[1].test(t); }).map(function (cw) { return cw[0]; });
+  var names = {}, cities = {};
+  leadsFull_().forEach(function (l) { var c = String(l['City'] || '').trim(); if (c.length >= 3) names[c] = true; });
+  Object.keys(names).forEach(function (c) {
+    var k = c.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+    if (k.length >= 3 && new RegExp('\\b' + k + '\\b').test(t)) cities[c] = true;
+  });
+  var lim = t.match(/\b(?:first|pehle|sirf|only|max|limit)\s*(\d{1,5})\b/) || t.match(/\b(\d{1,5})\s*(?:leads|logo|log|people|logon)\b/);
+  return { categories: cats, cities: Object.keys(cities), at: parseWhen_(t, now), limit: lim ? parseInt(lim[1], 10) : 0 };
+}
+
+/** Builds the plan the team confirms with YES. */
+function makePlan_(text) {
+  var now = new Date();
+  var r = readRequest_(text, now);
+  if (!r.categories.length) return { error: 'Which leads? Name a category: applicators, contractors, builders, architects, dealers, ' +
+                                             'end clients (or "all").\nExample: applicators ko monday 11 baje message bhejo' };
+  var book = playbook_(), items = [], missing = [];
+  r.categories.forEach(function (cat) {
+    var p = book[cat] || {};
+    if (!p.template) { missing.push(cat); return; }
+    var filter = cleanFilter_({ categories: [cat], cities: r.cities, limit: r.limit });
+    items.push({ category: cat, template: p.template, language: p.language || 'en', count: audience_(filter).length, filter: filter });
+  });
+  if (!items.length) return { error: 'No template is set for ' + missing.join(', ') + '. Add it in the app: Settings > Pitch by category.' };
+  return { items: items, missing: missing, at: r.at ? r.at.toISOString() : '', cities: r.cities, limit: r.limit, made: now.toISOString() };
+}
+
+function planText_(plan) {
+  var lines = ['📣 *Campaign plan*'];
+  plan.items.forEach(function (i) { lines.push('• ' + i.category + ': ' + i.count + ' leads, template ' + i.template); });
+  if (plan.cities.length) lines.push('Cities: ' + plan.cities.join(', '));
+  if (plan.limit) lines.push('At most ' + plan.limit + ' per category');
+  lines.push('When: ' + (plan.at ? fmt_(plan.at) : 'now'));
+  lines.push('Only leads never messaged before. Up to ' + growSetting_('CAMPAIGN_DAILY_LIMIT') + ' a day.');
+  if (plan.missing.length) lines.push('⚠️ No template set for ' + plan.missing.join(', ') + ' (Settings > Pitch by category).');
+  if (!sendEnabled_()) lines.push('⚠️ Test mode is on: nothing goes out until "Send on WhatsApp" is switched on.');
+  lines.push('The templates must be APPROVED in BlueTick.');
+  return lines.join('\n');
+}
+
+/** Creates the campaigns of a confirmed plan (scheduled, or started now). */
+function runPlan_(plan, who) {
+  var at = plan.at ? new Date(plan.at) : null;
+  if (at && at <= new Date()) at = null;
+  var stamp = Utilities.formatDate(at || new Date(), 'Asia/Kolkata', 'dd MMM');
+  var ids = plan.items.filter(function (i) { return i.count > 0; }).map(function (i) {
+    return newCampaign_({ 'Name': i.category + ' · ' + stamp, 'Template': i.template, 'Language': i.language, 'Uses Name': 'true',
+                          'Message Text': '', 'Filter': JSON.stringify(i.filter), 'Start At': at || '', 'Started': at ? '' : new Date() },
+                        at ? 'Scheduled' : 'Running');
+  });
+  if (!ids.length) return 'Nothing to send: no new leads match.';
+  logChange_('', who, 'Campaign plan: ' + plan.items.map(function (i) { return i.category; }).join(', ') + (at ? ' at ' + fmt_(at) : ' now'));
+  ensureCampaignTimer_(true);
+  if (!at && sendEnabled_()) { var r = campaignTick_(); return '✅ Started. ' + (r.sent || 0) + ' sent now, the rest every 5 minutes.'; }
+  return at ? '✅ Scheduled for ' + fmt_(at) + '. You will get a message when it starts.' :
+              '✅ Saved. It starts when "Send on WhatsApp" is switched on.';
+}
+
+/** Who may plan campaigns from WhatsApp: the main salesperson and the "every lead" team members. */
+function canPlan_(phone) {
+  return !!phone && (phone === normPhone_(setting_('SALES_WHATSAPP')) || (teamRouting_()['All'] || []).indexOf(phone) >= 0);
+}
+function savePlan_(key, plan) { PropertiesService.getScriptProperties().setProperty('PLAN_' + key, JSON.stringify(plan)); }
+function takePlan_(key) {
+  var props = PropertiesService.getScriptProperties(), raw = props.getProperty('PLAN_' + key);
+  if (!raw) return null;
+  props.deleteProperty('PLAN_' + key);
+  var plan = JSON.parse(raw);
+  return Date.now() - new Date(plan.made).getTime() < 30 * 60000 ? plan : null;  // a plan is good for 30 minutes
+}
+
+/** WhatsApp from the team: plan, confirm or cancel a campaign. Returns the answer, or '' if the text is not about campaigns. */
+function campaignChat_(text, from) {
+  if (!canPlan_(from)) return '';
+  var word = String(text).trim().toLowerCase().replace(/[.!]+$/, '');
+  if (/^(yes|haan|han|ha|ok|okay|confirm|haan bhejo)$/.test(word)) {
+    var plan = takePlan_(from);
+    return plan ? runPlan_(plan, 'sales') : 'No campaign plan is waiting. Tell me who to message, e.g. "applicators ko monday 11 baje".';
+  }
+  if (/^(no|nahi|nahin|cancel|ruko|mat bhejo)$/.test(word)) return takePlan_(from) ? 'Cancelled. Nothing was sent.' : '';
+  if (/^(campaigns?|status)$/.test(word)) return campaignStatus_();
+  var p = makePlan_(text);
+  if (p.error) return /\b(message|msg|mess|bhej|send|campaign|campa?gin)\w*/i.test(text) ? p.error : '';
+  savePlan_(from, p);
+  return planText_(p) + '\n\nReply *YES* to confirm or *NO* to cancel.';
+}
+
+function campaignStatus_() {
+  var rows = rowsAsObjects_(campaignsSheet_(), CAMPAIGN_COLS).filter(function (c) { return ['Running', 'Scheduled', 'Paused'].indexOf(c['Status']) >= 0; });
+  if (!rows.length) return 'No campaigns running or scheduled.';
+  return '📣 *Campaigns*\n' + rows.map(function (c) {
+    var k = campaignCounts_(c['ID']);
+    return '• ' + c['Name'] + ': ' + c['Status'] + (c['Status'] === 'Scheduled' ? ' for ' + fmt_(c['Start At']) : ', ' + k.sent + ' sent, ' + k.replied + ' replied');
+  }).join('\n');
+}
+
 var GROW_ACTIONS = {
   campaigns: function () {
     var leads = leadsFull_();
@@ -366,11 +595,41 @@ var GROW_ACTIONS = {
         return { id: String(c['ID']), name: String(c['Name']), template: String(c['Template']), language: String(c['Language']),
                  usesName: isOn_(c['Uses Name']), text: String(c['Message Text']), filter: JSON.parse(c['Filter'] || '{}'),
                  status: String(c['Status']), total: Number(c['Total']) || 0, sent: k.sent, failed: k.failed, replied: k.replied,
-                 optedOut: k.optedOut, error: String(c['Last Error'] || ''), created: iso_(c['Created']) };
+                 optedOut: k.optedOut, error: String(c['Last Error'] || ''), created: iso_(c['Created']),
+                 startAt: asDate_(c['Start At']) ? iso_(c['Start At']) : '' };
       }),
       dailyLimit: Number(growSetting_('CAMPAIGN_DAILY_LIMIT')), sent24h: sentLast24h_(), sendEnabled: sendEnabled_(),
       options: { categories: count('Category'), states: count('State'), cities: count('City') }
     };
+  },
+
+  playbook: function () { return { playbook: playbook_(), categories: CATEGORIES }; },
+
+  playbookSave: function (a) {
+    var o = {}, bad = [];
+    Object.keys(a.playbook || {}).forEach(function (cat) {
+      if (CATEGORIES.indexOf(cat) < 0) return;
+      var p = a.playbook[cat] || {}, tpl = String(p.template || '').trim();
+      if (tpl && !/^[a-z0-9_]+$/.test(tpl)) bad.push(cat);
+      o[cat] = { template: tpl, language: /^[a-z]{2}(_[A-Z]{2})?$/.test(String(p.language || '')) ? p.language : 'en',
+                 pitch: String(p.pitch || '').trim().slice(0, 2000) };
+    });
+    if (bad.length) return { error: 'Template names use small letters, numbers and _ only. Check: ' + bad.join(', ') };
+    writeSettings_({ CATEGORY_PLAYBOOK: JSON.stringify(o) });
+    return { message: 'Saved. The bot uses it from the next message.' };
+  },
+
+  planFromText: function (a) {
+    var p = makePlan_(a.text);
+    if (p.error) return { error: p.error };
+    savePlan_('app', p);
+    return { plan: p, summary: planText_(p) };
+  },
+
+  planConfirm: function () {
+    var plan = takePlan_('app');
+    if (!plan) return { error: 'The plan expired. Write it again.' };
+    return { message: runPlan_(plan, 'app') };
   },
 
   campaignPreview: function (a) {
@@ -387,8 +646,10 @@ var GROW_ACTIONS = {
     var lang = String(a.language || 'en').trim();
     if (!/^[a-z]{2}(_[A-Z]{2})?$/.test(lang)) return { error: 'Language code like en, hi or en_US' };
     var filter = JSON.stringify(cleanFilter_(a.filter));
+    var startAt = a.startAt ? new Date(a.startAt) : '';
+    if (startAt && isNaN(startAt.getTime())) return { error: 'Check the start date and time' };
     var fields = { 'Name': name, 'Template': template, 'Language': lang, 'Uses Name': a.usesName ? 'true' : 'false',
-                   'Message Text': String(a.text || '').slice(0, 1024), 'Filter': filter };
+                   'Message Text': String(a.text || '').slice(0, 1024), 'Filter': filter, 'Start At': startAt };
     if (a.id) {
       var c = getCampaign_(a.id);
       if (!c) return { error: 'Campaign not found' };
@@ -396,11 +657,7 @@ var GROW_ACTIONS = {
       setCampaign_(c, fields);
       return { message: 'Saved', id: String(c['ID']) };
     }
-    var id = 'C' + campaignsSheet_().getLastRow() + '-' + Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyMMddHHmm').replace(/\D/g, '').slice(-8);
-    campaignsSheet_().appendRow(CAMPAIGN_COLS.map(function (k) {
-      return { 'ID': id, 'Status': 'Draft', 'Created': new Date(), 'Total': 0, 'Sent': 0, 'Failed': 0 }[k] !== undefined ?
-        { 'ID': id, 'Status': 'Draft', 'Created': new Date(), 'Total': 0, 'Sent': 0, 'Failed': 0 }[k] : (fields[k] !== undefined ? fields[k] : '');
-    }));
+    var id = newCampaign_(fields, 'Draft');
     logChange_('', 'app', 'Campaign created: ' + name);
     return { message: 'Campaign saved', id: id };
   },
@@ -423,6 +680,13 @@ var GROW_ACTIONS = {
     var keepOn = cleanFilter_(JSON.parse(c['Filter'] || '{}')).keepOn;
     var left = audience_(JSON.parse(c['Filter'] || '{}'), campaignDone_(c['ID'])).length;
     if (!left && !keepOn) return { error: 'No leads match (or everyone already got it)' };
+    var at = asDate_(c['Start At']);
+    if (at && at > new Date() && !c['Started']) {
+      setCampaign_(c, { 'Status': 'Scheduled', 'Last Error': '' });
+      ensureCampaignTimer_(true);
+      logChange_('', 'app', 'Campaign scheduled: ' + c['Name'] + ' for ' + fmt_(at));
+      return { message: 'Scheduled for ' + fmt_(at) + '. ' + left + ' leads match now.' };
+    }
     setCampaign_(c, { 'Status': 'Running', 'Started': c['Started'] || new Date(), 'Last Error': '' });
     if (keepOn) {
       ensureCampaignTimer_(true);
@@ -439,6 +703,7 @@ var GROW_ACTIONS = {
   campaignPause: function (a) {
     var c = getCampaign_(a.id);
     if (!c) return { error: 'Campaign not found' };
+    if (c['Status'] === 'Scheduled') { setCampaign_(c, { 'Status': 'Draft' }); return { message: 'Schedule cancelled. It is a draft again.' }; }
     if (c['Status'] !== 'Running') return { error: 'Not running' };
     setCampaign_(c, { 'Status': 'Paused' });
     logChange_('', 'app', 'Campaign paused: ' + c['Name']);

@@ -62,7 +62,7 @@
   .when { font-size: 12px; color: var(--muted); text-align: right; margin-top: 4px; white-space: nowrap; }
   .empty { color: var(--muted); text-align: center; padding: 18px 8px; background: var(--card); border-radius: 12px; border: 1px dashed var(--line); font-size: 14px; }
   .search { display: flex; gap: 8px; margin-bottom: 10px; }
-  input[type=text], input[type=tel], input[type=password], input[type=number], select, textarea {
+  input[type=text], input[type=tel], input[type=password], input[type=number], input[type=datetime-local], select, textarea {
     width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); outline: none; }
   input:focus, select:focus, textarea:focus { border-color: var(--brand); }
   .chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; scrollbar-width: none; }
@@ -134,6 +134,8 @@
   .bar i { display: block; height: 100%; background: var(--ok); }
   .b-Running { background: var(--ok-soft); color: var(--ok); }
   .b-Paused { background: var(--due-soft); color: var(--due); }
+  .b-Scheduled { background: var(--wait-soft); color: var(--wait); }
+  .plan { white-space: pre-wrap; font-size: 14px; line-height: 1.45; }
   .check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; margin: 10px 0 0; }
   .check input { width: 18px; height: 18px; margin: 2px 0 0; flex: none; }
   .form label.check { display: flex; font-size: 14px; color: var(--text); margin: 12px 0 0; }
@@ -629,6 +631,7 @@ function renderSettings() {
           '<input type="text" inputmode="tel" class="s_team" data-cat="' + esc(c) + '" value="' + esc((b.team || {})[c] || '') + '" placeholder="98xxxxxxxx, 97xxxxxxxx">';
       }).join('') + '<div class="info" style="margin-top:8px">They can reply DONE / LATER / WON / LOST / LIST too; LIST shows only their leads.</div></details>' +
       '<button class="btn" style="width:100%;margin-top:6px" onclick="saveSettings(this)">Save</button></div>' +
+      '<h2>Pitch by category</h2><div class="card form" id="pbBox"><div class="info">Loading…</div></div>' +
       '<h2>This phone</h2><div class="card">' +
       (GAS ? '<div class="info" style="margin-bottom:10px">Tip: in Chrome tap ⋮ then "Add to Home screen" to open this like an app.</div>' :
              '<div class="info" style="margin-bottom:10px;word-break:break-all">Connected to ' + esc(S.url) + '</div>') +
@@ -636,7 +639,33 @@ function renderSettings() {
       '<button class="btn ghost" onclick="lock()">Lock app</button></div></div>';
     S.mode = b.mode === 'sales' ? 'sales' : 'gentle';
     if ($('k_provider')) providerChanged();
+    loadPlaybook();
   }).catch(fail);
+}
+function loadPlaybook() {
+  call('playbook').then(function (r) {
+    if (!$('pbBox')) return;
+    $('pbBox').innerHTML = '<div class="info">For each type of lead: the approved BlueTick template its first message uses, ' +
+      'and what the bot offers them in the chat.</div>' + r.categories.map(function (c) {
+        var p = r.playbook[c] || {};
+        return '<details style="margin-top:10px"' + (p.template ? '' : '') + '><summary style="cursor:pointer;font-weight:600">' + esc(c) +
+          (p.template ? ' <span class="info">· ' + esc(p.template) + '</span>' : '') + '</summary>' +
+          '<label>Template name</label><input type="text" autocapitalize="off" class="pb_t" data-cat="' + esc(c) + '" value="' + esc(p.template) + '" placeholder="e.g. amitek_' + esc(c.toLowerCase().replace(/\s+/g, '_')) + '">' +
+          '<label>Template language</label><select class="pb_l" data-cat="' + esc(c) + '">' + LANGS.map(function (l) {
+            return '<option value="' + l[0] + '"' + (l[0] === (p.language || 'en') ? ' selected' : '') + '>' + l[1] + '</option>'; }).join('') + '</select>' +
+          '<label>What to pitch</label><textarea rows="4" class="pb_p" data-cat="' + esc(c) + '">' + esc(p.pitch) + '</textarea></details>';
+      }).join('') + '<button class="btn" style="width:100%;margin-top:12px" onclick="savePlaybook(this)">Save pitches</button>';
+  }).catch(fail);
+}
+function savePlaybook(btn) {
+  var o = {};
+  document.querySelectorAll('.pb_t').forEach(function (i) {
+    var c = i.dataset.cat, q = function (cls) { return document.querySelector('.' + cls + '[data-cat="' + c + '"]').value; };
+    o[c] = { template: i.value.trim(), language: q('pb_l'), pitch: q('pb_p').trim() };
+  });
+  btn.disabled = true;
+  call('playbookSave', { playbook: o }).then(function (r) { btn.disabled = false; toast(r.message); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
 }
 function teamJson() {
   var o = {}; document.querySelectorAll('.s_team').forEach(function (i) { if (i.value.trim()) o[i.dataset.cat] = i.value.trim(); });
@@ -665,9 +694,31 @@ function renderCampaigns() {
       'Create it in BlueTick > Templates, wait for "Approved", then use its exact name here. ' +
       'Messages go out 40 at a time every 5 minutes, at most <b>' + d.dailyLimit + ' a day</b> (' + d.sent24h + ' sent in the last 24 hours). ' +
       '<a href="#" onclick="limitSheet();return false">Change limit</a></div>' +
-      '<button class="btn" style="width:100%;margin-bottom:12px" onclick="editCamp(null)">＋ New campaign</button>' +
+      '<div class="card form" style="margin-bottom:12px"><label style="margin-top:0">Tell the bot who to message, and when</label>' +
+      '<textarea id="askBot" rows="2" placeholder="applicators ko monday 11 baje message bhejo"></textarea>' +
+      '<div class="info" style="margin:6px 0 8px">Name categories (applicators, builders, architects, contractors, dealers, end clients or "all"), ' +
+      'a day (aaj, kal, monday, 15 oct) and a time. Each category gets its own template from Settings > Pitch by category. ' +
+      'The main salesperson can send the same thing to the bot on WhatsApp.</div>' +
+      '<button class="btn" style="width:100%" onclick="askPlan(this)">Make plan</button></div>' +
+      '<button class="btn ghost" style="width:100%;margin-bottom:12px" onclick="editCamp(null)">＋ New campaign (by hand)</button>' +
       (list.length ? list.map(campCard).join('') : '<div class="empty">No campaigns yet</div>');
   }).catch(fail);
+}
+function askPlan(btn) {
+  var text = $('askBot').value.trim();
+  if (!text) return toast('Write who to message, e.g. applicators ko monday 11 baje', true);
+  btn.disabled = true;
+  call('planFromText', { text: text }).then(function (r) {
+    btn.disabled = false;
+    openSheet('<div class="plan">' + esc(r.summary).replace(/\*([^*]+)\*/g, '<b>$1</b>') + '</div>' +
+      '<div class="row" style="margin-top:12px"><button class="btn ghost" onclick="closeSheet()">Cancel</button>' +
+      '<button class="btn" onclick="planOk(this)">Yes, do it</button></div>');
+  }).catch(function (e) { btn.disabled = false; fail(e); });
+}
+function planOk(btn) {
+  btn.disabled = true;
+  call('planConfirm').then(function (r) { closeSheet(); toast(r.message); $('askBot') && ($('askBot').value = ''); renderCampaigns(); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
 }
 function campCard(c) {
   var f = c.filter || {}, pct = c.total ? Math.min(100, Math.round(100 * c.sent / c.total)) : 0;
@@ -676,11 +727,13 @@ function campCard(c) {
   var btns = [];
   if (c.status === 'Draft' || c.status === 'Paused') btns.push('<button class="btn green" onclick="campStart(\'' + c.id + '\',this)">' + (c.status === 'Draft' ? '▶ Start' : '▶ Resume') + '</button>');
   if (c.status === 'Running') btns.push('<button class="btn ghost" onclick="campDo(\'campaignPause\',\'' + c.id + '\',this)">⏸ Pause</button>');
+  if (c.status === 'Scheduled') btns.push('<button class="btn ghost" onclick="campDo(\'campaignPause\',\'' + c.id + '\',this)">✕ Cancel schedule</button>');
   btns.push('<button class="btn soft" onclick="campDo(\'campaignTest\',\'' + c.id + '\',this)">Test to me</button>');
-  if (c.status !== 'Running' && c.status !== 'Done') btns.push('<button class="btn ghost" onclick="editCamp(\'' + c.id + '\')">Edit</button>');
+  if (['Running', 'Done', 'Scheduled'].indexOf(c.status) < 0) btns.push('<button class="btn ghost" onclick="editCamp(\'' + c.id + '\')">Edit</button>');
   if (c.status === 'Draft') btns.push('<button class="btn red" onclick="campDo(\'campaignDelete\',\'' + c.id + '\',this)">Delete</button>');
   return '<div class="card camp"><div class="top"><b>' + esc(c.name) + '</b><span class="badge b-' + esc(c.status) + '">' + esc(c.status) + '</span></div>' +
     '<div class="info">Template ' + esc(c.template) + ' (' + esc(c.language) + ') · ' + esc(who) + '</div>' +
+    (c.status === 'Scheduled' && c.startAt ? '<div class="info">⏰ Starts ' + esc(when(c.startAt)) + '</div>' : '') +
     (c.total || c.sent ? '<div class="bar"><i style="width:' + pct + '%"></i></div>' : '') +
     '<div class="info"><b>' + c.sent + '</b>' + (f.keepOn ? '' : ' of ' + c.total) + ' sent · <b>' + c.replied + '</b> replied' +
     (c.failed ? ' · ' + c.failed + ' failed' : '') + (c.optedOut ? ' · ' + c.optedOut + ' said STOP' : '') + '</div>' +
@@ -695,7 +748,8 @@ function campStart(id, btn) {
   call('campaignPreview', { filter: c.filter }).then(function (r) {
     $('startInfo').innerHTML = r.welcome ? 'From now on, every new lead you add gets the template "' + esc(c.template) + '" on WhatsApp, until you pause it. Existing leads are not messaged.' :
       '<b>' + r.count + ' leads</b> match' + (c.sent ? ' (those who already got it are skipped)' : '') +
-      '. They get the template "' + esc(c.template) + '" on WhatsApp. This cannot be undone.';
+      '. They get the template "' + esc(c.template) + '" on WhatsApp' +
+      (c.startAt && new Date(c.startAt) > new Date() && c.status === 'Draft' ? ', starting ' + esc(when(c.startAt)) : '') + '. This cannot be undone.';
     $('startOk').disabled = false;
   }).catch(fail);
 }
@@ -714,7 +768,7 @@ function saveLimit() { call('campaignLimit', { limit: $('limitIn').value }).then
 
 function editCamp(id) {
   var c = id ? S.campData.campaigns.filter(function (x) { return x.id === id; })[0] : null;
-  S.camp = c ? JSON.parse(JSON.stringify(c)) : { id: '', name: '', template: '', language: 'hi', usesName: false, text: '',
+  S.camp = c ? JSON.parse(JSON.stringify(c)) : { id: '', name: '', template: '', language: 'hi', usesName: false, text: '', startAt: '',
            filter: { categories: [], states: [], cities: [], newOnly: true, canMessageOnly: true, limit: 0, keepOn: false } };
   render(); window.scrollTo(0, 0);
 }
@@ -751,15 +805,22 @@ function renderCampForm() {
     '<label class="check"><input id="c_can" type="checkbox"' + (f.canMessageOnly !== false ? ' checked' : '') + ' onchange="preview()"><span>Skip leads marked "Can Message = No"</span></label>' +
     '<label class="check"><input id="c_keep" type="checkbox"' + (f.keepOn ? ' checked' : '') + ' onchange="preview()"><span>Welcome message: keep running and greet every new lead you add later' +
     '<small>Leads you add in the app from now on get this template automatically. Your existing list is not messaged.</small></span></label>' +
+    '<label>Start on (blank = when you tap Start)</label><input id="c_start" type="datetime-local" value="' + esc(localInput(c.startAt)) + '">' +
     '<div class="info" style="margin-top:12px" id="c_count">Counting…</div>' +
     '<div class="info" style="margin-top:4px">Always skipped: people who said STOP, won or lost leads, landlines and the salesperson.</div>' +
     '<button class="btn" style="width:100%;margin-top:14px" onclick="saveCamp(this)">Save campaign</button></div>';
   preview();
 }
+function localInput(iso) {
+  if (!iso) return '';
+  var d = new Date(iso), p = function (n) { return (n < 10 ? '0' : '') + n; };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
 function readCamp() {
   var c = S.camp, f = c.filter;
   c.name = $('c_name').value.trim(); c.template = $('c_tpl').value.trim(); c.language = $('c_lang').value;
   c.usesName = $('c_name1').checked; c.text = $('c_text').value.trim();
+  c.startAt = $('c_start').value ? new Date($('c_start').value).toISOString() : '';
   f.cities = $('c_cities').value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
   f.limit = parseInt($('c_limit').value, 10) || 0; f.newOnly = $('c_new').checked; f.canMessageOnly = $('c_can').checked; f.keepOn = $('c_keep').checked;
   return c;
@@ -779,7 +840,7 @@ function preview() {
 }
 function saveCamp(btn) {
   var c = readCamp(); btn.disabled = true;
-  call('campaignSave', { id: c.id, name: c.name, template: c.template, language: c.language, usesName: c.usesName, text: c.text, filter: c.filter })
+  call('campaignSave', { id: c.id, name: c.name, template: c.template, language: c.language, usesName: c.usesName, text: c.text, filter: c.filter, startAt: c.startAt })
     .then(function (r) { toast(r.message + '. Tap "Test to me" first.'); S.camp = null; render(); })
     .catch(function (e) { btn.disabled = false; fail(e); });
 }

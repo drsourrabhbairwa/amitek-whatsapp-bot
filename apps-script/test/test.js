@@ -508,6 +508,94 @@ const tests = {
     // daily summary: one per team member
     env.sent.length = 0; env.ctx.dailySummary();
     assert.deepStrictEqual(texts(env).map(m => m.to).sort(), [SALES, APP, DEAL].sort());
+  },
+  'when to send: days and times in English, Hindi and Hinglish are read as India time'() {
+    const env = load(BASE);
+    const now = new Date('2026-10-08T06:00:00Z');  // Thursday 11:30 AM in India
+    const at = t => { const d = env.ctx.parseWhen_(t, now); return d && d.toISOString(); };
+    assert.strictEqual(at(' applicators monday 11 baje '), '2026-10-12T05:30:00.000Z');
+    assert.strictEqual(at(' builders kal 4 pm '), '2026-10-09T10:30:00.000Z');
+    assert.strictEqual(at(' dealers 15 oct '), '2026-10-15T04:30:00.000Z');       // default 10 AM
+    assert.strictEqual(at(' kal shaam 5 baje '), '2026-10-09T11:30:00.000Z');
+    assert.strictEqual(at(' applicators aaj 2 pm '), '2026-10-08T08:30:00.000Z');
+    assert.strictEqual(at(' applicators abhi '), null);
+    assert.strictEqual(at(' applicators aaj 9 am '), null, 'a time already past means now');
+    assert.strictEqual(at(' thursday '), '2026-10-15T04:30:00.000Z', 'same weekday, time passed: next week');
+  },
+  'tell the bot: category plan by WhatsApp, YES to schedule, sends at the time, one template per category'() {
+    const SCH = '919700000009';
+    const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES } }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    const sh = env.sheets['Leads'];
+    const row = (phone, f) => { sh.rows.push(sh.rows[0].map(c => c === 'Phone' ? phone : (f[c] !== undefined ? f[c] : (c === 'Status' ? 'New' : '')))); };
+    row('919811110001', { Name: 'Ramesh', City: 'Jaipur', Category: 'Applicator' });
+    row('919811110002', { Name: 'Shree', City: 'Jaipur', Category: 'Builder' });
+    row('919811110003', { Name: 'Asha', City: 'Ajmer', Category: 'Builder' });
+    row('919811110004', { Name: 'Home', City: 'Jaipur', Category: 'End Client' });
+    api('playbookSave', { playbook: { Applicator: { template: 'amitek_applicator', language: 'hi', pitch: 'Third party manufacturing pitch' },
+                                      Builder: { template: 'amitek_builder', language: 'hi', pitch: 'Flooring, home automation, CCTV' },
+                                      'End Client': { template: 'Bad Name' } } }).error.includes('End Client') || assert.fail('bad template name refused');
+    api('playbookSave', { playbook: { Applicator: { template: 'amitek_applicator', language: 'hi', pitch: 'Third party manufacturing pitch' },
+                                      Builder: { template: 'amitek_builder', language: 'hi', pitch: 'Flooring, home automation, CCTV' } } });
+    const say_ = (from, t) => { post(env, payload([text(from, t)])); return texts(env).filter(m => m.to === from).pop().text; };
+    // strangers cannot plan campaigns
+    assert(env.ctx.campaignChat_('applicators ko kal message bhejo', '919999999999') === '');
+    let reply = say_(SALES, 'applicators aur builders ko kal 11 baje message bhejo');
+    assert(reply.includes('Applicator: 1 leads') && reply.includes('Builder: 2 leads') && reply.includes('YES'), reply);
+    assert.strictEqual(env.sent.filter(m => m.body.type === 'template').length, 0, 'nothing is sent before YES');
+    assert(say_(SALES, 'no').includes('Cancelled'));
+    assert(say_(SALES, 'yes').includes('No campaign plan'));
+    reply = say_(SALES, 'builders jaipur kal 11 baje bhejo');
+    assert(reply.includes('Builder: 1 leads') && reply.includes('Cities: Jaipur'), reply);
+    reply = say_(SALES, 'yes');
+    assert(reply.includes('Scheduled'), reply);
+    let list = api('campaigns').campaigns.filter(c => c.status === 'Scheduled');
+    assert.strictEqual(list.length, 1); assert(list[0].startAt);
+    assert.strictEqual(env.sent.filter(m => m.body.type === 'template').length, 0);
+    env.ctx.campaignTick();
+    assert.strictEqual(env.sent.filter(m => m.body.type === 'template').length, 0, 'not before its time');
+    // time passes
+    const c = env.ctx.rowsAsObjects_(env.ctx.campaignsSheet_(), env.ctx.CAMPAIGN_COLS)[0];
+    env.ctx.setCampaign_(c, { 'Start At': new Date(Date.now() - 1000) });
+    env.ctx.campaignTick();
+    const tpl = env.sent.filter(m => m.body.type === 'template');
+    assert.deepStrictEqual(tpl.map(m => m.body.to), ['919811110002']);
+    assert.strictEqual(tpl[0].body.template.name, 'amitek_builder');
+    // "now" sends at once; each category gets its own template
+    env.sent.length = 0;
+    reply = say_(SALES, 'sabko abhi message bhejo');
+    assert(reply.includes('Applicator: 1 leads') && reply.includes('End Client: 1 leads'), reply);
+    assert(say_(SALES, 'haan').includes('Started'));
+    const byTpl = {}; env.sent.filter(m => m.body.type === 'template').forEach(m => { byTpl[m.body.to] = m.body.template.name; });
+    assert.strictEqual(byTpl['919811110001'], 'amitek_applicator');
+    assert.strictEqual(byTpl['919811110003'], 'amitek_builder');
+    assert.strictEqual(byTpl['919811110004'], 'amitek_end_client', 'every category has a default template name');
+    assert(!byTpl['919811110002'], 'already messaged leads are not messaged again');
+    // same thing from the app
+    env.sent.length = 0;
+    const pl = api('planFromText', { text: 'applicators kal' });
+    assert(pl.error || pl.plan.items[0].count === 0, 'nothing new for applicators');
+    assert(api('planFromText', { text: 'hello' }).error);
+    // cancel a schedule
+    row('919811110005', { Name: 'New', City: 'Jaipur', Category: 'Applicator' });
+    api('planFromText', { text: 'applicators 25 dec 10 am' });
+    assert(api('planConfirm').message.includes('Scheduled'));
+    const sch = api('campaigns').campaigns.find(x => x.status === 'Scheduled');
+    assert.strictEqual(api('campaignPause', { id: sch.id }).message.includes('cancelled'), true);
+    assert.strictEqual(api('campaigns').campaigns.find(x => x.id === sch.id).status, 'Draft');
+  },
+  'each category is pitched its own offer in the chat'() {
+    const env = load(Object.assign({}, BASE, { claude: [say('Ji')] }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    api('playbookSave', { playbook: { Applicator: { template: 'amitek_applicator', pitch: 'THIRD PARTY MANUFACTURING OFFER' } } });
+    upsert(env, CUST, { Category: 'Applicator' });
+    post(env, payload([text(CUST, 'haan batao')]));
+    const sys = JSON.stringify(env.claudeCalls[env.claudeCalls.length - 1].body.system);
+    assert(String(sys).includes('THIRD PARTY MANUFACTURING OFFER'));
+    assert(sys.includes('customer_type=') && sys.includes('Applicator'));
+    const book = api('playbook').playbook;
+    assert(book['Builder'].pitch.includes('seamless') || book['Builder'].pitch.includes('CCTV'), 'builder default pitch covers flooring, automation, CCTV');
+    assert(book['End Client'].pitch.includes('their own home'), 'end client default pitch is about our products');
   }
 };
 

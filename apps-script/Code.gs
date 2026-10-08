@@ -53,7 +53,8 @@ var DEFAULT_SETTINGS = {
   RELAY_URL: '',                     // optional Cloudflare relay (relay/worker.js) if BlueTick cannot verify the Google link
   CAMPAIGN_DAILY_LIMIT: '250',       // campaign messages per 24 hours (Meta's limit for the number; raise it as Meta raises yours)
   CAMPAIGN_BATCH: '40',              // campaign messages per 5-minute run
-  LEARN_AUTO: 'true'                 // every Monday the bot suggests what it learned from last week's chats (needs approval)
+  LEARN_AUTO: 'true',                // every Monday the bot suggests what it learned from last week's chats (needs approval)
+  CATEGORY_PLAYBOOK: ''              // JSON {"Applicator": {template, language, pitch}}: opening template and offer per category (Grow.gs)
 };
 
 var STOP_WORDS = ['stop', 'unsubscribe', 'stop messages', 'not interested', 'abhi nahi', 'band karo', 'मत भेजो'];
@@ -542,7 +543,7 @@ function callModel_(system, messages) {
 /** One tool-use loop. Returns {reply, updates, handoff, optedOut}. */
 function runAgent_(hist, lead) {
   var role = setting_('BOT_MODE') === 'sales' ? SALES_ROLE : GENTLE_ROLE;
-  var system = role + '\n\n<knowledge>\n' + knowledge_() + '\n</knowledge>';
+  var system = role + '\n\n<knowledge>\n' + knowledge_() + '\n</knowledge>' + pitchFor_(lead);
   var messages = buildMessages_(hist, lead);
   var result = { reply: '', updates: {}, handoff: null, optedOut: false };
   for (var round = 0; round < 5; round++) {
@@ -836,14 +837,20 @@ var HELP = '*Lead commands* (send to this number):\n' +
     'LATER 98xxxxxxxx 5 note - follow up in 5 days\n' +
     'WON 98xxxxxxxx note - order received\n' +
     'LOST 98xxxxxxxx reason - closed, not buying\n' +
-    'LIST - everything pending';
+    'LIST - everything pending\n\n' +
+    '*Campaigns* (main salesperson and "every lead" team):\n' +
+    'applicators ko monday 11 baje message bhejo - plans it, you reply YES\n' +
+    'builders aur architects jaipur kal - by category and city\n' +
+    'CAMPAIGNS - what is running or scheduled';
 
 function salesCommand_(text, from) {
   var parts = String(text).trim().split(/\s+/);
   var cmd = (parts[0] || '').toUpperCase();
   if (cmd === 'HELP' || cmd === '?') return HELP;
   if (cmd === 'LIST' || cmd === 'PENDING') return pendingReport_(categoriesOf_(from));
-  if (['DONE', 'LATER', 'WON', 'LOST'].indexOf(cmd) < 0 || parts.length < 2) return 'Command not understood.\n\n' + HELP;
+  if (['DONE', 'LATER', 'WON', 'LOST'].indexOf(cmd) < 0 || parts.length < 2) {
+    return campaignChat_(text, from) || 'Command not understood.\n\n' + HELP;
+  }
   var days = null, note = parts.slice(2).join(' ');
   if (cmd === 'LATER' && !isNaN(parseInt(parts[2], 10))) { days = parseInt(parts[2], 10); note = parts.slice(3).join(' '); }
   var r = leadAction_(normPhone_(parts[1]), cmd, days, note, 'sales');

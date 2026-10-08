@@ -55,6 +55,12 @@ WhatsApp only lets a business write first with a **template approved by Meta**.
 4. **Welcome message**: tick "keep running and greet every new lead" on a campaign and start it. Every lead you add in the app
    from then on gets that template right away. Your existing list is not messaged by it.
 
+## Pitch by category, and telling the bot who to message
+- **Settings > Pitch by category**: for each type of lead (applicator, end client, builder, architect, contractor, dealer) set the approved BlueTick template its first message uses and what the bot offers them in the chat (applicators: third-party manufacturing; end clients: our products; builders and architects: waterproofing, seamless flooring, home automation, CCTV and other solutions). The defaults are ready; edit the text freely.
+- **Send tab > "Tell the bot"** (or WhatsApp the bot from the main salesperson number): write who and when, for example `applicators ko monday 11 baje message bhejo` or `builders aur architects jaipur kal 4 baje`. The bot shows the plan (leads per category, template, time); reply YES to confirm or NO to cancel. Nothing is sent before YES. `CAMPAIGNS` shows what is running or scheduled.
+- Scheduled campaigns start by themselves at the time (checked every 5 minutes). Times are India time; no time means 10 AM; `abhi` means now.
+- Template texts to copy into BlueTick: `campaigns/category_templates.md` in the project files.
+
 ## Teaching the bot (Learn tab)
 - **Teach the bot**: paste (or pick a text/CSV file) your company profile, product list, price list or an old campaign export.
   "Let AI learn from it" pulls out the useful points; "Save as it is" adds the whole text.

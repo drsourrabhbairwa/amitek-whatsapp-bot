@@ -43,7 +43,7 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
     Date, JSON, Math, Object, Array, String, Number, isNaN, parseInt,
     SpreadsheetApp: { getActiveSpreadsheet: () => ss },
     PropertiesService: { getScriptProperties: () => ({
-      getProperty: k => (k in store ? store[k] : null), setProperty: (k, v) => { store[k] = v; } }) },
+      getProperty: k => (k in store ? store[k] : null), setProperty: (k, v) => { store[k] = v; }, deleteProperty: k => { delete store[k]; } }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     CacheService: { getScriptCache: () => ({ get: k => (k in cache ? cache[k] : null), put: (k, v) => { cache[k] = v; } }) },
     HtmlService: {
