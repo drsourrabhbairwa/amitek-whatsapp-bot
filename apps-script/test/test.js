@@ -28,6 +28,7 @@ function lead(env, phone) {
   const r = sh.rows.find(x => String(x[0]) === phone);
   if (!r) return null; const o = {}; h.forEach((c, i) => { o[c] = r[i]; }); return o;
 }
+const upsert = (env, phone, f) => env.ctx.upsertLead_(phone, f || {}, 'test');
 const texts = env => env.sent.filter(s => s.body.type === 'text').map(s => ({ to: s.body.to, text: s.body.text.body }));
 
 const tests = {
@@ -365,6 +366,122 @@ const tests = {
     assert(api('saveKeys', { relayUrl: 'http://bad' }).error);
     api('saveKeys', { relayUrl: '' });
     assert.strictEqual(api('status').relayUrl, '');
+  }
+  ,
+  'campaign sends an approved template to the right leads, in batches, within the daily limit'() {
+    const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'false', SALES_WHATSAPP: SALES, CAMPAIGN_DAILY_LIMIT: '3', CAMPAIGN_BATCH: '2' } }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    const sh = env.sheets['Leads'];
+    sh.rows[0] = sh.rows[0].concat(['Can Message']);
+    const row = (phone, f) => { const h = sh.rows[0]; sh.rows.push(h.map(c => c === 'Phone' ? phone : (f[c] !== undefined ? f[c] : (c === 'Status' ? 'New' : ''))));};
+    row('919811110001', { Name: 'Ramesh Kumar', City: 'Jaipur', Category: 'Applicator', 'Can Message': 'Yes' });
+    row('919811110002', { Business: 'Shree Builders', City: 'Jaipur', Category: 'Builder' });
+    row('919811110003', { City: 'Jaipur', Category: 'Dealer' });
+    row('919811110004', { City: 'Jaipur', 'Can Message': 'No' });                 // skipped: marked do not message
+    row('919811110005', { City: 'Jaipur', 'Opt-in': 'Opted out' });               // skipped: said STOP
+    row('919811110006', { City: 'Jaipur', Status: 'Won' });                       // skipped: closed
+    row('91141234567', { City: 'Jaipur' });                                       // skipped: not a mobile number
+    row('919811110008', { City: 'Ajmer' });                                       // other city
+    row('919811110009', { City: 'Jaipur', 'Last Inbound': new Date() });          // skipped: already talking to us
+    row(SALES, { City: 'Jaipur' });                                               // skipped: salesperson
+    const filter = { cities: 'jaipur' };
+    const pv = api('campaignPreview', { filter }); assert.strictEqual(pv.count, 3, JSON.stringify(env.ctx.audience_(filter).map(l => [l.Phone, l['Can Message'], l.Status, l['Opt-in']])));
+    assert(api('campaignSave', { name: 'Jaipur test', template: 'Bad Name', filter }).error);
+    const id = api('campaignSave', { name: 'Jaipur test', template: 'amitek_intro', language: 'hi', usesName: true,
+                                     text: 'Namaste {{1}} ji, Amitek se...', filter }).id;
+    assert(api('campaignStart', { id }).error.includes('Test mode'), 'never sends in test mode');
+    assert(api('campaignTest', { id }).message.includes(SALES), 'test goes to the salesperson even in test mode');
+    const t = env.sent.pop().body;
+    assert.strictEqual(t.type, 'template'); assert.strictEqual(t.template.name, 'amitek_intro');
+    assert.strictEqual(t.template.language.code, 'hi');
+    assert.strictEqual(env.sent.length, 0);
+    api('saveSettings', { SEND_ENABLED: 'true' });
+    assert(api('campaignStart', { id }).message.includes('2 sent'));
+    assert(env.triggers.some(x => x.getHandlerFunction() === 'campaignTick'), 'timer added');
+    let tos = env.sent.map(s => s.body.to);
+    assert.deepStrictEqual(tos, ['919811110001', '919811110002']);
+    assert.strictEqual(env.sent[0].body.template.components[0].parameters[0].text, 'Ramesh');
+    assert.strictEqual(env.sent[1].body.template.components[0].parameters[0].text, 'Shree');
+    assert.strictEqual(lead(env, '919811110001').Status, 'Contacted');
+    assert.strictEqual(lead(env, '919811110001').Campaign, 'Jaipur test');
+    assert(env.sheets['Messages'].rows.some(r => r[1] === '919811110001' && r[3] === 'campaign' && r[4].includes('Namaste Ramesh ji')));
+    env.ctx.campaignTick();   // daily limit 3: only one more today
+    assert.strictEqual(env.sent.length, 3);
+    env.ctx.campaignTick();
+    assert.strictEqual(env.sent.length, 3, 'stops at the daily limit');
+    env.sheets['Campaign Log'].rows.slice(1).forEach(r => { r[0] = new Date(Date.now() - 25 * 3600000); });  // a day later
+    env.ctx.campaignTick();
+    assert.strictEqual(env.sent.filter(s => s.body.type === 'template').length, 3, 'nobody left, nobody gets it twice');
+    assert(texts(env).some(m => m.to === SALES && m.text.includes('finished')));
+    const c = api('campaigns').campaigns[0];
+    assert.strictEqual(c.status, 'Done'); assert.strictEqual(c.sent, 3);
+    assert(!env.triggers.some(x => x.getHandlerFunction() === 'campaignTick'), 'timer removed when done');
+    // a reply to the campaign is counted and the bot answers it like any chat
+    env.claude.push(say('Ji, bataiye kaunsa kaam hai?'));
+    post(env, payload([text('919811110002', 'haan batao')]));
+    assert.strictEqual(api('campaigns').campaigns[0].replied, 1);
+  },
+  'campaign pauses itself when WhatsApp refuses the template'() {
+    const env = load(BASE);
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    upsert(env, '919811110001'); upsert(env, '919811110002');
+    const orig = env.ctx.UrlFetchApp.fetch;
+    env.ctx.UrlFetchApp.fetch = (url, opt) => JSON.parse(opt.payload).type === 'template' ?
+      { getResponseCode: () => 404, getContentText: () => '{"error":{"code":132001,"message":"Template name does not exist"}}' } : orig(url, opt);
+    const id = api('campaignSave', { name: 'X', template: 'wrong_name', filter: {} }).id;
+    api('campaignStart', { id });
+    const c = api('campaigns').campaigns[0];
+    assert.strictEqual(c.status, 'Paused'); assert(c.error.includes('132001'));
+    assert.strictEqual(c.failed, 1, 'stopped after the first refusal');
+    assert(texts(env).some(m => m.to === SALES && m.text.includes('paused')));
+  },
+  'welcome campaign greets leads added in the app'() {
+    const env = load(BASE);
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    const id = api('campaignSave', { name: 'Welcome', template: 'amitek_welcome', filter: { keepOn: true } }).id;
+    const other = api('campaignSave', { name: 'Other', template: 'other_one', filter: {} }).id;
+    assert.notStrictEqual(other, id, 'campaigns saved in the same minute get different IDs');
+    upsert(env, '919811110001', { Created: new Date(Date.now() - 86400000) });  // the existing list
+    assert(api('campaignStart', { id }).message.includes('Welcome'));
+    env.ctx.campaignTick();
+    assert.strictEqual(env.sent.length, 0, 'existing leads are never messaged by a welcome campaign');
+    assert.strictEqual(api('campaigns').campaigns.find(c => c.id === id).status, 'Running', 'keeps waiting for new leads');
+    const r = api('addLead', { phone: '9811110002', name: 'Suresh' });
+    assert(r.message.includes('welcome'));
+    assert.deepStrictEqual(env.sent.map(s => s.body.to), ['919811110002']);
+    env.ctx.campaignTick();
+    assert.strictEqual(env.sent.length, 1, 'nobody greeted twice');
+  },
+  'learning: suggestions from chats and taught text need approval before the bot uses them'() {
+    const env = load(BASE);
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    const notes = JSON.stringify([{ title: 'Terrace leak answer', content: 'Team recommends Amitek terrace coat, 2 coats.', why: 'chat 1' }]);
+    env.claude.push(say('Ji bataiye'));
+    post(env, payload([text(CUST, 'terrace leak ke liye kya lagau?')]));
+    env.claude.push(say('Here you go:\n' + notes));
+    let r = api('learnChats', { days: 7 });
+    assert.strictEqual(r.added, 1);
+    const prompt = env.claudeCalls[env.claudeCalls.length - 1].body.messages[0].content;
+    assert(prompt.includes('terrace leak ke liye') && prompt.includes('<recent_chats'));
+    let k = api('knowledge');
+    assert.strictEqual(k.suggestions.length, 1);
+    const before = env.sheets['Knowledge'].rows.length;
+    assert.strictEqual(api('learnDecide', { row: k.suggestions[0].row, approve: true, content: 'Edited: 2 coats.' }).message, 'The bot knows this now');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(env.sheets['Knowledge'].rows[before])), ['Learned: Terrace leak answer', 'Edited: 2 coats.']);
+    assert(api('learnDecide', { row: k.suggestions[0].row, approve: true }).error, 'cannot approve twice');
+    // teach from pasted text: straight in, or through the AI
+    api('learnText', { title: 'Company profile', text: 'Amitek, Jaipur. Open 10-7.', direct: true });
+    assert(env.sheets['Knowledge'].rows.some(x => x[0] === 'Company profile'));
+    env.claude.push(say('[]'));
+    assert(api('learnText', { title: 'Old campaign export', text: 'name,replied\nA,yes' }).message.includes('nothing new'));
+    // the bot's next reply includes approved knowledge
+    env.claude.push(say('Ji'));
+    post(env, payload([text(CUST, 'aur?')]));
+    assert(env.claudeCalls[env.claudeCalls.length - 1].body.system[0].text.includes('Edited: 2 coats.'));
+    k = api('knowledge');
+    const doc = k.docs.find(d => d.title === 'Company profile');
+    api('knowledgeDelete', { row: doc.row });
+    assert(!api('knowledge').docs.some(d => d.title === 'Company profile'));
   }
 };
 

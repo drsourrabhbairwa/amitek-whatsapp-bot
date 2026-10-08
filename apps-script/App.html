@@ -34,7 +34,7 @@
   main { padding: 12px 16px 96px; max-width: 720px; margin: 0 auto; }
   nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--line);
     display: flex; padding-bottom: env(safe-area-inset-bottom); z-index: 6; }
-  nav button { flex: 1; border: 0; background: none; padding: 9px 0 10px; color: var(--muted); font-size: 12px; cursor: pointer; }
+  nav button { flex: 1; border: 0; background: none; padding: 9px 0 10px; color: var(--muted); font-size: 11px; cursor: pointer; min-width: 0; }
   nav button .i { display: block; font-size: 20px; line-height: 24px; }
   nav button.on { color: var(--brand); font-weight: 600; }
   .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
@@ -127,6 +127,22 @@
   .ck.ok { background: var(--ok); border-color: var(--ok); }
   .hook { font: 12px/1.4 ui-monospace, Menlo, monospace; background: var(--grey-soft); border-radius: 8px; padding: 10px; word-break: break-all; user-select: all; }
   .loading { text-align: center; color: var(--muted); padding: 30px 0; }
+  .camp { margin-bottom: 10px; }
+  .camp .top { display: flex; gap: 8px; align-items: flex-start; }
+  .camp .top b { flex: 1; min-width: 0; }
+  .bar { height: 6px; background: var(--grey-soft); border-radius: 6px; overflow: hidden; margin: 8px 0 6px; }
+  .bar i { display: block; height: 100%; background: var(--ok); }
+  .b-Running { background: var(--ok-soft); color: var(--ok); }
+  .b-Paused { background: var(--due-soft); color: var(--due); }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; margin: 10px 0 0; }
+  .check input { width: 18px; height: 18px; margin: 2px 0 0; flex: none; }
+  .form label.check { display: flex; font-size: 14px; color: var(--text); margin: 12px 0 0; }
+  .check small { display: block; color: var(--muted); font-size: 12px; }
+  .note { border-top: 1px solid var(--line); padding: 10px 0; }
+  .note:first-child { border-top: 0; padding-top: 0; }
+  .note .t { font-weight: 600; }
+  .note .c { font-size: 14px; white-space: pre-wrap; margin-top: 2px; }
+  .pre { font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 </style>
 </head>
 <body>
@@ -157,6 +173,8 @@
     <button data-tab="today" onclick="showTab('today')"><span class="i">◉</span>Today</button>
     <button data-tab="leads" onclick="showTab('leads')"><span class="i">☰</span>Leads</button>
     <button data-tab="add" onclick="showTab('add')"><span class="i">＋</span>Add</button>
+    <button data-tab="send" onclick="showTab('send')"><span class="i">📣</span>Send</button>
+    <button data-tab="learn" onclick="showTab('learn')"><span class="i">🧠</span>Learn</button>
     <button data-tab="settings" onclick="showTab('settings')"><span class="i">⚙</span>Settings</button>
   </nav>
 </div>
@@ -288,8 +306,8 @@ function setHeader(title, back) {
   $('title').textContent = title; $('backBtn').classList.toggle('hidden', !back);
   document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === S.tab); });
 }
-function showTab(tab) { S.tab = tab; S.lead = null; S.stack = []; render(); window.scrollTo(0, 0); }
-function goBack() { S.lead = null; render(); }
+function showTab(tab) { S.tab = tab; S.lead = null; S.camp = null; S.stack = []; render(); window.scrollTo(0, 0); }
+function goBack() { S.lead = null; S.camp = null; render(); }
 function refresh() { if (S.lead) openLead(S.lead.card.phone, true); else render(); }
 function loading() { $('main').innerHTML = '<div class="loading">Loading…</div>'; }
 
@@ -298,6 +316,8 @@ function render() {
   if (S.tab === 'leads') return renderLeads();
   if (S.tab === 'add') return renderAdd();
   if (S.tab === 'settings') return renderSettings();
+  if (S.tab === 'send') return S.camp ? renderCampForm() : renderCampaigns();
+  if (S.tab === 'learn') return renderLearn();
 }
 
 function leadRow(c) {
@@ -486,7 +506,7 @@ function renderAdd() {
     '<div><label>City</label><input id="a_city" type="text"></div></div>' +
     '<label>What they need</label><textarea id="a_note" rows="3"></textarea>' +
     '<button class="btn" style="width:100%;margin-top:14px" onclick="addLead(this)">Add lead</button></div>' +
-    '<div class="info" style="margin:10px 2px">The lead gets a follow-up for tomorrow. The bot does not message them; WhatsApp only allows replies after they write first.</div>';
+    '<div class="info" style="margin:10px 2px">The lead gets a follow-up for tomorrow. If a welcome campaign is running (Send tab), they get its message right away; otherwise the bot waits for them to write first.</div>';
 }
 function addLead(btn) {
   var v = function (id) { return $(id).value.trim(); };
@@ -620,6 +640,210 @@ function saveSettings(btn) {
     .then(function (r) { btn.disabled = false; toast('Settings saved'); renderSettings(); })
     .catch(function (e) { btn.disabled = false; fail(e); });
 }
+
+// ---------------------------------------------------------------- Campaigns
+var LANGS = [['en', 'English'], ['hi', 'Hindi'], ['en_US', 'English (US)'], ['en_GB', 'English (UK)']];
+function renderCampaigns() {
+  setHeader('Campaigns', false); loading();
+  call('campaigns').then(function (d) {
+    if (S.tab !== 'send' || S.camp) return;
+    S.campData = d;
+    var list = d.campaigns.filter(function (c) { return c.status !== 'Deleted'; });
+    $('main').innerHTML =
+      (!d.sendEnabled ? '<div class="notice">Test mode is on, so campaigns cannot start. Turn on "Send on WhatsApp" in Settings when ready.</div>' : '') +
+      '<div class="card info" style="margin-bottom:12px">WhatsApp lets a business write first only with a <b>template approved by Meta</b>. ' +
+      'Create it in BlueTick > Templates, wait for "Approved", then use its exact name here. ' +
+      'Messages go out 40 at a time every 5 minutes, at most <b>' + d.dailyLimit + ' a day</b> (' + d.sent24h + ' sent in the last 24 hours). ' +
+      '<a href="#" onclick="limitSheet();return false">Change limit</a></div>' +
+      '<button class="btn" style="width:100%;margin-bottom:12px" onclick="editCamp(null)">＋ New campaign</button>' +
+      (list.length ? list.map(campCard).join('') : '<div class="empty">No campaigns yet</div>');
+  }).catch(fail);
+}
+function campCard(c) {
+  var f = c.filter || {}, pct = c.total ? Math.min(100, Math.round(100 * c.sent / c.total)) : 0;
+  var who = [f.keepOn ? 'Welcome: every new lead' : '', (f.categories || []).join(', '), (f.cities || []).join(', '), (f.states || []).join(', '),
+             f.limit ? 'max ' + f.limit : ''].filter(Boolean).join(' · ') || 'All leads';
+  var btns = [];
+  if (c.status === 'Draft' || c.status === 'Paused') btns.push('<button class="btn green" onclick="campStart(\'' + c.id + '\',this)">' + (c.status === 'Draft' ? '▶ Start' : '▶ Resume') + '</button>');
+  if (c.status === 'Running') btns.push('<button class="btn ghost" onclick="campDo(\'campaignPause\',\'' + c.id + '\',this)">⏸ Pause</button>');
+  btns.push('<button class="btn soft" onclick="campDo(\'campaignTest\',\'' + c.id + '\',this)">Test to me</button>');
+  if (c.status !== 'Running' && c.status !== 'Done') btns.push('<button class="btn ghost" onclick="editCamp(\'' + c.id + '\')">Edit</button>');
+  if (c.status === 'Draft') btns.push('<button class="btn red" onclick="campDo(\'campaignDelete\',\'' + c.id + '\',this)">Delete</button>');
+  return '<div class="card camp"><div class="top"><b>' + esc(c.name) + '</b><span class="badge b-' + esc(c.status) + '">' + esc(c.status) + '</span></div>' +
+    '<div class="info">Template ' + esc(c.template) + ' (' + esc(c.language) + ') · ' + esc(who) + '</div>' +
+    (c.total || c.sent ? '<div class="bar"><i style="width:' + pct + '%"></i></div>' : '') +
+    '<div class="info"><b>' + c.sent + '</b>' + (f.keepOn ? '' : ' of ' + c.total) + ' sent · <b>' + c.replied + '</b> replied' +
+    (c.failed ? ' · ' + c.failed + ' failed' : '') + (c.optedOut ? ' · ' + c.optedOut + ' said STOP' : '') + '</div>' +
+    (c.error ? '<div class="notice">' + esc(c.error) + '</div>' : '') +
+    '<div class="row" style="margin-top:10px;flex-wrap:wrap">' + btns.join('') + '</div></div>';
+}
+function campStart(id, btn) {
+  var c = S.campData.campaigns.filter(function (x) { return x.id === id; })[0];
+  openSheet('<h3>Start "' + esc(c.name) + '"?</h3><div class="info" id="startInfo">Counting leads…</div>' +
+    '<div class="row" style="margin-top:12px"><button class="btn ghost" onclick="closeSheet()">Cancel</button>' +
+    '<button class="btn" id="startOk" disabled onclick="closeSheet();campDo(\'campaignStart\',\'' + id + '\')">Yes, send</button></div>');
+  call('campaignPreview', { filter: c.filter }).then(function (r) {
+    $('startInfo').innerHTML = r.welcome ? 'From now on, every new lead you add gets the template "' + esc(c.template) + '" on WhatsApp, until you pause it. Existing leads are not messaged.' :
+      '<b>' + r.count + ' leads</b> match' + (c.sent ? ' (those who already got it are skipped)' : '') +
+      '. They get the template "' + esc(c.template) + '" on WhatsApp. This cannot be undone.';
+    $('startOk').disabled = false;
+  }).catch(fail);
+}
+function campDo(action, id, btn) {
+  if (btn) btn.disabled = true;
+  call(action, { id: id }).then(function (r) { toast(r.message); renderCampaigns(); })
+    .catch(function (e) { if (btn) btn.disabled = false; fail(e); });
+}
+function limitSheet() {
+  openSheet('<h3>Campaign messages per day</h3><div class="info">Meta sets how many people your number may message first each day ' +
+    '(new numbers usually 250, then 1,000 and more as quality stays good). Check it in BlueTick or Meta Business Manager.</div>' +
+    '<input id="limitIn" type="number" value="' + S.campData.dailyLimit + '" style="margin:10px 0 12px">' +
+    '<div class="row"><button class="btn ghost" onclick="closeSheet()">Cancel</button><button class="btn" onclick="saveLimit()">Save</button></div>');
+}
+function saveLimit() { call('campaignLimit', { limit: $('limitIn').value }).then(function (r) { closeSheet(); toast(r.message); renderCampaigns(); }).catch(fail); }
+
+function editCamp(id) {
+  var c = id ? S.campData.campaigns.filter(function (x) { return x.id === id; })[0] : null;
+  S.camp = c ? JSON.parse(JSON.stringify(c)) : { id: '', name: '', template: '', language: 'hi', usesName: false, text: '',
+           filter: { categories: [], states: [], cities: [], newOnly: true, canMessageOnly: true, limit: 0, keepOn: false } };
+  render(); window.scrollTo(0, 0);
+}
+function chipsFor(key, opts) {
+  var on = S.camp.filter[key] || [];
+  return '<div class="chips" style="flex-wrap:wrap">' + opts.map(function (o) {
+    return '<button class="chip' + (on.indexOf(o.name) >= 0 ? ' on' : '') + '" onclick="toggleChip(\'' + key + '\',this)" data-v="' + esc(o.name) + '">' +
+      esc(o.name) + ' <span style="opacity:.6">' + o.n + '</span></button>'; }).join('') + '</div>';
+}
+function toggleChip(key, el) {
+  var v = el.dataset.v, a = S.camp.filter[key] = S.camp.filter[key] || [];
+  var i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v);
+  el.classList.toggle('on', i < 0); preview();
+}
+function renderCampForm() {
+  var c = S.camp, f = c.filter, o = S.campData.options;
+  setHeader(c.id ? 'Edit campaign' : 'New campaign', true);
+  $('main').innerHTML = '<div class="card form">' +
+    '<label>Campaign name (for you)</label><input id="c_name" type="text" value="' + esc(c.name) + '" placeholder="e.g. Jaipur applicators October">' +
+    '<label>Template name, exactly as approved in BlueTick</label><input id="c_tpl" type="text" autocapitalize="off" value="' + esc(c.template) + '" placeholder="e.g. amitek_intro_hi">' +
+    '<label>Template language</label><select id="c_lang">' + LANGS.map(function (l) {
+      return '<option value="' + l[0] + '"' + (l[0] === c.language ? ' selected' : '') + '>' + l[1] + ' (' + l[0] + ')</option>'; }).join('') + '</select>' +
+    '<label class="check"><input id="c_name1" type="checkbox"' + (c.usesName ? ' checked' : '') + '><span>The template has {{1}} for the customer\'s name' +
+    '<small>The first name (or business name, or "ji") is filled in.</small></span></label>' +
+    '<label>Template text (copy it from BlueTick, so the chat history shows what was sent)</label>' +
+    '<textarea id="c_text" rows="4" placeholder="Namaste {{1}} ji, Amitek Waterproofing se…">' + esc(c.text) + '</textarea></div>' +
+    '<h2>Who gets it</h2><div class="card form">' +
+    '<label>Category (none picked = all)</label>' + chipsFor('categories', o.categories) +
+    '<label>State</label>' + chipsFor('states', o.states) +
+    '<label>Cities (comma separated, blank = all)</label><input id="c_cities" type="text" value="' + esc((f.cities || []).join(', ')) + '" placeholder="Jaipur, Ajmer" oninput="preview()">' +
+    '<label>Most leads to send to (0 = no limit)</label><input id="c_limit" type="number" value="' + (f.limit || 0) + '" oninput="preview()">' +
+    '<label class="check"><input id="c_new" type="checkbox"' + (f.newOnly !== false ? ' checked' : '') + ' onchange="preview()"><span>Only leads we never messaged' +
+    '<small>Skips anyone already chatting with you.</small></span></label>' +
+    '<label class="check"><input id="c_can" type="checkbox"' + (f.canMessageOnly !== false ? ' checked' : '') + ' onchange="preview()"><span>Skip leads marked "Can Message = No"</span></label>' +
+    '<label class="check"><input id="c_keep" type="checkbox"' + (f.keepOn ? ' checked' : '') + ' onchange="preview()"><span>Welcome message: keep running and greet every new lead you add later' +
+    '<small>Leads you add in the app from now on get this template automatically. Your existing list is not messaged.</small></span></label>' +
+    '<div class="info" style="margin-top:12px" id="c_count">Counting…</div>' +
+    '<div class="info" style="margin-top:4px">Always skipped: people who said STOP, won or lost leads, landlines and the salesperson.</div>' +
+    '<button class="btn" style="width:100%;margin-top:14px" onclick="saveCamp(this)">Save campaign</button></div>';
+  preview();
+}
+function readCamp() {
+  var c = S.camp, f = c.filter;
+  c.name = $('c_name').value.trim(); c.template = $('c_tpl').value.trim(); c.language = $('c_lang').value;
+  c.usesName = $('c_name1').checked; c.text = $('c_text').value.trim();
+  f.cities = $('c_cities').value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  f.limit = parseInt($('c_limit').value, 10) || 0; f.newOnly = $('c_new').checked; f.canMessageOnly = $('c_can').checked; f.keepOn = $('c_keep').checked;
+  return c;
+}
+function preview() {
+  clearTimeout(preview.h);
+  preview.h = setTimeout(function () {
+    if (!S.camp || !$('c_count')) return;
+    var c = readCamp();
+    call('campaignPreview', { filter: c.filter }).then(function (r) {
+      if (!$('c_count')) return;
+      if (r.welcome) { $('c_count').innerHTML = 'Only leads <b>added after you start it</b> get this message. Your existing list is not messaged.'; return; }
+      $('c_count').innerHTML = '<b>' + r.count + ' leads</b> match' +
+        (r.sample.length ? ': ' + esc(r.sample.slice(0, 3).join('; ')) + (r.count > 3 ? '…' : '') : '');
+    }).catch(fail);
+  }, 400);
+}
+function saveCamp(btn) {
+  var c = readCamp(); btn.disabled = true;
+  call('campaignSave', { id: c.id, name: c.name, template: c.template, language: c.language, usesName: c.usesName, text: c.text, filter: c.filter })
+    .then(function (r) { toast(r.message + '. Tap "Test to me" first.'); S.camp = null; render(); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+
+// ---------------------------------------------------------------- Learn
+function renderLearn() {
+  setHeader('Learn', false); loading();
+  call('knowledge').then(function (k) {
+    if (S.tab !== 'learn') return;
+    S.know = k;
+    var sug = k.suggestions.map(function (n) {
+      return '<div class="note" data-row="' + n.row + '"><input type="text" class="s_t" value="' + esc(n.title) + '" style="font-weight:600">' +
+        '<textarea class="s_c" rows="3" style="margin-top:6px">' + esc(n.content) + '</textarea>' +
+        '<div class="info" style="margin:4px 0 8px">' + esc(n.source) + (n.why ? ' · ' + esc(n.why) : '') + '</div>' +
+        '<div class="row"><button class="btn green" onclick="decide(this,true)">✓ Teach the bot</button><button class="btn ghost" onclick="decide(this,false)">✗ Wrong, skip</button></div></div>';
+    }).join('');
+    $('main').innerHTML =
+      '<div class="card info" style="margin-bottom:12px">The bot answers from what it knows below. It learns from your chats, campaign results and anything you teach it, ' +
+      'but <b>nothing is used until you approve it</b>, so it never picks up a wrong price or promise.</div>' +
+      '<h2>To review' + (k.suggestions.length ? ' (' + k.suggestions.length + ')' : '') + '</h2>' +
+      '<div class="card">' + (sug || '<div class="info">Nothing to review. Tap "Learn from chats" or teach it something below.</div>') + '</div>' +
+      '<h2>Learn from chats and campaigns</h2><div class="card">' +
+      '<div class="row"><select id="l_days"><option value="7">Last 7 days</option><option value="14" selected>Last 14 days</option><option value="30">Last 30 days</option></select>' +
+      '<button class="btn" onclick="learnChats(this)">Learn now</button></div>' +
+      '<div class="switch" style="padding-bottom:0"><div>Every Monday, automatically<small>Finds new things in last week\'s chats and asks you to approve them.</small></div>' +
+      '<label class="tog"><input type="checkbox" id="l_auto"' + (k.auto ? ' checked' : '') + ' onchange="learnAuto(this)"><span></span></label></div></div>' +
+      '<h2>Teach the bot</h2><div class="card form">' +
+      '<div class="info">Company profile, products and uses, price list, delivery areas, an export of an old BlueTick campaign: paste it or pick a text/CSV file.</div>' +
+      '<label>Title</label><input id="t_title" type="text" placeholder="e.g. Product list October 2026">' +
+      '<label>Text</label><textarea id="t_text" rows="6" placeholder="Paste here…"></textarea>' +
+      '<input id="t_file" type="file" accept=".txt,.csv,.md,.tsv,text/*" style="margin-top:8px;font-size:13px" onchange="readFile(this)">' +
+      '<div class="row" style="margin-top:12px"><button class="btn" onclick="teach(this,false)">Let AI learn from it</button>' +
+      '<button class="btn ghost" onclick="teach(this,true)">Save as it is</button></div>' +
+      '<div class="info" style="margin-top:6px">"Let AI learn" pulls out the useful points for you to approve. "Save as it is" adds the whole text right away (good for a price list you checked).</div></div>' +
+      '<h2>What the bot knows (' + k.docs.length + ')</h2>' +
+      (k.docs.length ? '<div class="list">' + k.docs.map(function (d, i) {
+        return '<div class="lead" onclick="editDoc(' + i + ')"><div class="main"><div class="name">' + esc(d.title || 'Untitled') + '</div>' +
+          '<div class="pre">' + esc(d.content) + '</div></div></div>'; }).join('') + '</div>' : '<div class="empty">Nothing yet</div>') +
+      '<div class="info" style="margin:8px 2px">' + Math.round(k.size / 1000) + 'k characters. Keep it under about 80k; very long texts are cut.</div>';
+  }).catch(fail);
+}
+function decide(btn, ok) {
+  var n = btn.closest('.note'); btn.disabled = true;
+  call('learnDecide', { row: n.dataset.row, approve: ok, title: n.querySelector('.s_t').value, content: n.querySelector('.s_c').value })
+    .then(function (r) { toast(r.message); renderLearn(); }).catch(function (e) { btn.disabled = false; fail(e); });
+}
+function learnChats(btn) {
+  var t = btn.textContent; btn.disabled = true; btn.textContent = 'Reading chats…';
+  call('learnChats', { days: $('l_days').value }).then(function (r) { toast(r.message); renderLearn(); })
+    .catch(function (e) { btn.disabled = false; btn.textContent = t; fail(e); });
+}
+function learnAuto(el) { call('learnAuto', { on: el.checked }).then(function (r) { toast(r.message); }).catch(fail); }
+function readFile(inp) {
+  var f = inp.files && inp.files[0]; if (!f) return;
+  if (f.size > 2000000) { toast('File is too big (max 2 MB of text)', true); return; }
+  var r = new FileReader();
+  r.onload = function () { $('t_text').value = String(r.result).slice(0, 60000); if (!$('t_title').value) $('t_title').value = f.name.replace(/\.[^.]+$/, ''); };
+  r.readAsText(f);
+}
+function teach(btn, direct) {
+  var t = btn.textContent; btn.disabled = true; if (!direct) btn.textContent = 'Learning…';
+  call('learnText', { title: $('t_title').value.trim(), text: $('t_text').value.trim(), direct: direct })
+    .then(function (r) { toast(r.message); renderLearn(); })
+    .catch(function (e) { btn.disabled = false; btn.textContent = t; fail(e); });
+}
+function editDoc(i) {
+  var d = S.know.docs[i];
+  openSheet('<h3>Edit</h3><input id="d_title" type="text" value="' + esc(d.title) + '" style="margin-bottom:8px">' +
+    '<textarea id="d_text" rows="10">' + esc(d.content) + '</textarea>' +
+    '<div class="row" style="margin-top:12px"><button class="btn red" onclick="delDoc(' + d.row + ')">Delete</button>' +
+    '<button class="btn ghost" onclick="closeSheet()">Cancel</button><button class="btn" onclick="saveDoc(' + d.row + ')">Save</button></div>');
+}
+function saveDoc(row) { call('knowledgeSave', { row: row, title: $('d_title').value, content: $('d_text').value }).then(function (r) { closeSheet(); toast(r.message); renderLearn(); }).catch(fail); }
+function delDoc(row) { if (!confirm('Delete this from what the bot knows?')) return; call('knowledgeDelete', { row: row }).then(function (r) { closeSheet(); toast(r.message); renderLearn(); }).catch(fail); }
 
 // ---------------------------------------------------------------- start
 (function start() {

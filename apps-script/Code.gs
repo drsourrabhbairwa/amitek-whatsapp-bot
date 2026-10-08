@@ -49,7 +49,10 @@ var DEFAULT_SETTINGS = {
   DAILY_SUMMARY_HOUR: '9',
   WA_API_URL: 'https://crmapi.bluetickapi.com/api/meta',
   WA_API_VERSION: 'v19.0',
-  RELAY_URL: ''                      // optional Cloudflare relay (relay/worker.js) if BlueTick cannot verify the Google link
+  RELAY_URL: '',                     // optional Cloudflare relay (relay/worker.js) if BlueTick cannot verify the Google link
+  CAMPAIGN_DAILY_LIMIT: '250',       // campaign messages per 24 hours (Meta's limit for the number; raise it as Meta raises yours)
+  CAMPAIGN_BATCH: '40',              // campaign messages per 5-minute run
+  LEARN_AUTO: 'true'                 // every Monday the bot suggests what it learned from last week's chats (needs approval)
 };
 
 var STOP_WORDS = ['stop', 'unsubscribe', 'stop messages', 'not interested', 'abhi nahi', 'band karo', 'मत भेजो'];
@@ -413,7 +416,8 @@ function knowledge_() {
   if (sh.getLastRow() < 2) return '';
   return sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues()
       .filter(function (r) { return r[0] || r[1]; })
-      .map(function (r) { return '<document name="' + r[0] + '">\n' + r[1] + '\n</document>'; }).join('\n\n');
+      .map(function (r) { return '<document name="' + r[0] + '">\n' + String(r[1]).slice(0, 15000) + '\n</document>'; })
+      .join('\n\n').slice(0, 80000);  // keeps every reply fast and cheap; split very long documents
 }
 
 function leadCard_(lead) {
@@ -773,6 +777,7 @@ function pendingReport_() {
 function dailySummary() {
   alertSales_(pendingReport_());
   refreshBoard_();
+  weeklyLearn_();
 }
 
 var HELP = '*Lead commands* (send to this number):\n' +
@@ -857,6 +862,9 @@ function setup() {
   ensure(SHEETS.knowledge, ['Title', 'Content']);
   ensure(SHEETS.board, null);
   ensure(SHEETS.raw, ['Time', 'Payload']);
+  ensure(GROW_SHEETS.campaigns, CAMPAIGN_COLS);
+  ensure(GROW_SHEETS.campaignLog, CAMPAIGN_LOG_COLS);
+  ensure(GROW_SHEETS.learning, LEARN_COLS);
   var st = ensure(SHEETS.settings, ['Setting', 'Value', 'Notes']);
   var have = st.getLastRow() > 1 ? st.getRange(2, 1, st.getLastRow() - 1, 1).getValues().map(function (r) { return r[0]; }) : [];
   Object.keys(DEFAULT_SETTINGS).forEach(function (k) { if (have.indexOf(k) < 0) st.appendRow([k, DEFAULT_SETTINGS[k], '']); });

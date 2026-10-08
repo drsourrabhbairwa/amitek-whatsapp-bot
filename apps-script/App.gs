@@ -37,7 +37,7 @@ function api(pin, action, argsJson) {
   var lock = LockService.getScriptLock();
   lock.waitLock(25000);
   try {
-    var fn = APP_ACTIONS[action];
+    var fn = APP_ACTIONS[action] || (typeof GROW_ACTIONS !== 'undefined' && GROW_ACTIONS[action]);
     if (!fn) return JSON.stringify({ error: 'Unknown action ' + action });
     return JSON.stringify(fn(args), function (k, v) { return v; });
   } catch (err) {
@@ -166,7 +166,8 @@ var APP_ACTIONS = {
     upsertLead_(phone, { 'Name': a.name || '', 'Business': a.business || '', 'Category': CATEGORIES.indexOf(a.category) >= 0 ? a.category : 'Other',
                          'City': a.city || '', 'Requirement': a.note || '', 'Status': 'Contacted', 'Campaign': 'Added from app',
                          'Next Follow-up': addHours_(24), 'Follow-up Note': a.note || 'New lead added from app' }, 'app');
-    return { message: 'Lead added', phone: phone };
+    var welcomed = a.welcome !== false && welcomeNewLead_();
+    return { message: welcomed ? 'Lead added and welcome message sent' : 'Lead added', phone: phone };
   },
 
   reply: function (a) {

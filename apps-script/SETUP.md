@@ -45,12 +45,29 @@ Google's link answers with a redirect, which BlueTick's check does not accept. P
 Other team members install the same APK and enter the same link and PIN.
 No Android phone? Open the Web app URL in any browser; it is the same app.
 
+## Messaging all your leads (Send tab)
+WhatsApp only lets a business write first with a **template approved by Meta**.
+1. In BlueTick > **Templates > Create**, category **Marketing**, write the message (use `{{1}}` for the name if you like) and submit. Wait for **Approved**.
+2. In the app, **Send > New campaign**: type the template name exactly, pick the language, choose who gets it (category, state, cities, max), Save.
+3. Tap **Test to me**, check the message on the salesperson phone, then **Start**.
+   Messages go out 40 every 5 minutes, at most 250 a day (change it to match your Meta limit). People who said STOP, won/lost leads,
+   "Can Message = No" leads and anyone who already got it are always skipped. When someone replies, the bot answers them.
+4. **Welcome message**: tick "keep running and greet every new lead" on a campaign and start it. Every lead you add in the app
+   from then on gets that template right away. Your existing list is not messaged by it.
+
+## Teaching the bot (Learn tab)
+- **Teach the bot**: paste (or pick a text/CSV file) your company profile, product list, price list or an old campaign export.
+  "Let AI learn from it" pulls out the useful points; "Save as it is" adds the whole text.
+- **Learn from chats**: the AI reads recent chats and campaign results and suggests what the bot should know. It also does this every Monday.
+- Nothing is used until you tap **Teach the bot** on it, so the bot never learns a wrong price by itself. Edit or delete anything under "What the bot knows".
+
 ## What the app does
 - **Today**: hot leads, overdue follow-ups, customers waiting for a reply, what's coming up.
 - **Lead**: the WhatsApp chat, Call and WhatsApp buttons, Done / Later / Won / Lost, edit details,
   change history, and a reply box to answer as the team (the bot then stays quiet for that customer for 12 hours).
   WhatsApp allows typed replies only within 24 hours of the customer's last message.
 - **Leads**: search by name, number or city, filter by status. **Add**: add a walk-in or phone lead.
+- **Send**: campaigns and welcome messages. **Learn**: what the bot knows and what it learned.
 - **Settings**: setup checklist and keys, test mode, bot on/off, gentle or sales mode, salesperson number, PIN.
 
 The salesperson also gets WhatsApp alerts (hot leads, unanswered chats, due follow-ups, 9 AM summary) and can

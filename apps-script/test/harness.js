@@ -8,6 +8,7 @@ function makeSheet(name) {
   const sh = {
     name, rows,
     getLastRow: () => rows.length,
+    getLastColumn: () => rows.reduce((m, r) => Math.max(m, r.length), 0),
     appendRow: r => { rows.push(r.slice()); },
     getRange: (r, c, nr = 1, nc = 1) => ({
       getValues: () => Array.from({ length: nr }, (_, i) =>
@@ -60,7 +61,7 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
       getProjectTriggers: () => triggers.slice(),
       deleteTrigger: t => triggers.splice(triggers.indexOf(t), 1),
       newTrigger: fn => {
-        const b = { timeBased: () => b, everyHours: () => b, atHour: () => b, everyDays: () => b, inTimezone: () => b,
+        const b = { timeBased: () => b, everyHours: () => b, everyMinutes: () => b, atHour: () => b, everyDays: () => b, inTimezone: () => b,
                     create: () => { const t = { getHandlerFunction: () => fn }; triggers.push(t); return t; } };
         return b;
       }
@@ -82,7 +83,7 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
     }
   };
   vm.createContext(ctx);
-  (process.env.DIST ? ['dist/Amitek_Bot.gs'] : ['Code.gs', 'App.gs']).forEach(f =>
+  (process.env.DIST ? ['dist/Amitek_Bot.gs'] : ['Code.gs', 'App.gs', 'Grow.gs']).forEach(f =>
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), ctx, { filename: f }));
   ctx.setup();
   // apply test settings to the Settings tab
@@ -92,7 +93,7 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
     row[1] = settings[k];
   });
   vm.runInContext('settingsCache_ = null;', ctx);
-  return { ctx, sheets, sent, claudeCalls, triggers, props: store, cache };
+  return { ctx, sheets, sent, claude, claudeCalls, triggers, props: store, cache };
 }
 
 module.exports = { load };
