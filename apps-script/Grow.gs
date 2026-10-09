@@ -765,6 +765,7 @@ function runPlan_(plan, who) {
 
 /** Who may plan campaigns from WhatsApp: the main salesperson and the "every lead" team members. */
 function canPlan_(phone) {
+  if (/^tg:/.test(String(phone || ''))) return typeof tgCanCampaign_ === 'function' && tgCanCampaign_(phone);
   return !!phone && (phone === normPhone_(setting_('SALES_WHATSAPP')) || (teamRouting_()['All'] || []).indexOf(phone) >= 0);
 }
 function savePlan_(key, plan) { PropertiesService.getScriptProperties().setProperty('PLAN_' + key, JSON.stringify(plan)); }

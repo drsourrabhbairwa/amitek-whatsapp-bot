@@ -216,6 +216,10 @@ function doPost(e) {
   var raw = (e.postData && e.postData.contents) || '{}';
   var payload;
   try { payload = JSON.parse(raw); } catch (err) { return ContentService.createTextOutput('ok'); }
+  if (typeof isTelegram_ === 'function' && isTelegram_(payload)) {  // the team's Telegram bot (Telegram.gs)
+    try { handleTelegram_(payload); } catch (err) { console.error('telegram failed', err && err.stack); }
+    return ContentService.createTextOutput('ok');
+  }
   var lock = LockService.getScriptLock();
   lock.waitLock(25000);  // one message at a time keeps the sheet consistent
   try {
@@ -743,7 +747,8 @@ function label_(lead) {
   return name + ' (+' + lead['Phone'] + (bits.length ? ', ' + bits.join(', ') : '') + ')';
 }
 
-function alertSales_(text) {
+function alertSales_(text, noTelegram) {
+  if (!noTelegram && typeof tgAlert_ === 'function') tgAlert_(text);
   var to = normPhone_(setting_('SALES_WHATSAPP'));
   if (!to) { console.warn('SALES_WHATSAPP not set; alert: ' + text); return; }
   waText_(to, text);
@@ -782,6 +787,7 @@ function categoriesOf_(phone) {
   return Object.keys(r).filter(function (c) { return r[c].indexOf(phone) >= 0; });
 }
 function alertLead_(lead, text) {
+  if (typeof tgAlert_ === 'function') tgAlert_(text);
   var to = recipientsFor_(lead);
   if (!to.length) { console.warn('No team number set; alert: ' + text); return; }
   to.forEach(function (p) { waText_(p, text); });

@@ -38,7 +38,8 @@ function api(pin, action, argsJson) {
   var lock = { sortRun: 1, learnChats: 1, learnText: 1 }[action] ? { releaseLock: function () {} } : LockService.getScriptLock();
   if (lock.waitLock) lock.waitLock(25000);
   try {
-    var fn = APP_ACTIONS[action] || (typeof GROW_ACTIONS !== 'undefined' && GROW_ACTIONS[action]);
+    var fn = APP_ACTIONS[action] || (typeof GROW_ACTIONS !== 'undefined' && GROW_ACTIONS[action]) ||
+             (typeof TG_ACTIONS !== 'undefined' && TG_ACTIONS[action]);
     if (!fn) return JSON.stringify({ error: 'Unknown action ' + action });
     return JSON.stringify(fn(args), function (k, v) { return v; });
   } catch (err) {

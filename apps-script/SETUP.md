@@ -65,6 +65,22 @@ WhatsApp only lets a business write first with a **template approved by Meta**.
 - **Sort leads (Learn tab):** the bot reads names and business types of leads with no clear category and suggests one; you approve. Campaigns can also pick each lead's template by category ("Pick the template by category").
 - Template texts to copy into BlueTick: `campaigns/category_templates.md` in the project files.
 
+## Team on Telegram (employees only)
+
+Employees can use a private Telegram bot instead of the app: add leads, get lead alerts, look up a lead, reply to a lead on
+WhatsApp from the company number, and (if you tick it) plan campaigns. The bot also explains itself: /start shows the guide,
+and any question in Hindi or English gets an answer from the guide.
+
+1. The relay link must be set (Setup screen), because Telegram, like BlueTick, needs a plain answer.
+2. In Telegram open **@BotFather**, send `/newbot`, choose a name. Copy the token it gives you.
+3. App > Settings > Telegram (team): paste the token, tap **Connect**. Share the t.me link with employees.
+4. Each employee opens the link and presses Start. You get a WhatsApp message; tap **Allow** for company people only.
+   Tick "Can send WhatsApp campaigns" only for people who may message all leads (they still have to reply YES).
+
+How employees give leads: one per line, `name, mobile, category, city, note`, or a CSV file
+(columns like Name, Phone, Category, City). Excel: save as CSV first. New leads wait for the next campaign;
+existing numbers are left as they are. Groups are ignored, strangers get no data.
+
 ## Teaching the bot (Learn tab)
 - **Teach the bot**: paste (or pick a text/CSV file) your company profile, product list, price list or an old campaign export.
   "Let AI learn from it" pulls out the useful points; "Save as it is" adds the whole text.

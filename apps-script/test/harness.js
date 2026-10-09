@@ -32,6 +32,7 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
   const triggers = [];
   const store = Object.assign({}, props);
   const cache = {};
+  const tg = [], tgFiles = {};
   const ss = {
     getSheetByName: n => sheets[n] || null,
     insertSheet: n => (sheets[n] = makeSheet(n))
@@ -68,6 +69,14 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
     },
     UrlFetchApp: {
       fetch: (url, opt) => {
+        if (url.startsWith('https://api.telegram.org/')) {
+          if (url.includes('/file/bot')) return { getResponseCode: () => 200, getContentText: () => tgFiles[url.split('/').pop()] || '' };
+          const method = url.split('/').pop(), b = JSON.parse(opt.payload || '{}');
+          tg.push({ method, body: b });
+          const r = method === 'getMe' ? { ok: true, result: { username: 'amitek_team_bot' } } :
+                    method === 'getFile' ? { ok: true, result: { file_path: 'documents/' + b.file_id } } : { ok: true, result: {} };
+          return { getResponseCode: () => 200, getContentText: () => JSON.stringify(r) };
+        }
         const body = JSON.parse(opt.payload);
         if (url.startsWith('https://api.anthropic.com')) {
           claudeCalls.push({ headers: opt.headers, body: JSON.parse(JSON.stringify(body)) });
@@ -83,7 +92,7 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
     }
   };
   vm.createContext(ctx);
-  (process.env.DIST ? ['dist/Amitek_Bot.gs'] : ['Code.gs', 'App.gs', 'Grow.gs']).forEach(f =>
+  (process.env.DIST ? ['dist/Amitek_Bot.gs'] : ['Code.gs', 'App.gs', 'Grow.gs', 'Telegram.gs']).forEach(f =>
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), ctx, { filename: f }));
   ctx.setup();
   // apply test settings to the Settings tab
@@ -94,7 +103,7 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
     row[1] = settings[k];
   });
   vm.runInContext('settingsCache_ = null;', ctx);
-  return { ctx, sheets, sent, claude, claudeCalls, triggers, props: store, cache };
+  return { ctx, sheets, sent, claude, claudeCalls, triggers, props: store, cache, tg, tgFiles };
 }
 
 module.exports = { load };

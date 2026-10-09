@@ -634,6 +634,7 @@ function renderSettings() {
       }).join('') + '<div class="info" style="margin-top:8px">They can reply DONE / LATER / WON / LOST / LIST too; LIST shows only their leads.</div></details>' +
       '<button class="btn" style="width:100%;margin-top:6px" onclick="saveSettings(this)">Save</button></div>' +
       '<h2>Pitch by category</h2><div class="card form" id="pbBox"><div class="info">Loading…</div></div>' +
+      '<h2>Telegram (team)</h2><div class="card form" id="tgBox"><div class="info">Loading…</div></div>' +
       '<h2>This phone</h2><div class="card">' +
       (GAS ? '<div class="info" style="margin-bottom:10px">Tip: in Chrome tap ⋮ then "Add to Home screen" to open this like an app.</div>' :
              '<div class="info" style="margin-bottom:10px;word-break:break-all">Connected to ' + esc(S.url) + '</div>') +
@@ -642,7 +643,53 @@ function renderSettings() {
     S.mode = b.mode === 'sales' ? 'sales' : 'gentle';
     if ($('k_provider')) providerChanged();
     loadPlaybook();
+    loadTelegram();
   }).catch(fail);
+}
+// ---- Telegram: employees use a private Telegram bot; only people allowed here get answers
+function loadTelegram() { call('tgStatus').then(renderTelegram).catch(fail); }
+function renderTelegram(r) {
+  if (!$('tgBox')) return;
+  var people = (r.users || []).slice().sort(function (a, b) { return (a.status === 'asked' ? 0 : 1) - (b.status === 'asked' ? 0 : 1); });
+  $('tgBox').innerHTML = r.connected ?
+    '<div class="info">Connected: <b>t.me/' + esc(r.bot) + '</b>. Employees open this link and press Start. They show up below; ' +
+      'allow only company people. Allowed people can add leads, get lead alerts, reply to leads and ask how things work.</div>' +
+    (people.length ? people.map(function (u) {
+      var id = esc(u.id);
+      return '<div class="switch" style="display:block;margin-top:10px"><div><b>' + esc(u.name) + '</b>' + (u.user ? ' <span class="info">@' + esc(u.user) + '</span>' : '') +
+        '<small>' + (u.status === 'allowed' ? 'Allowed' : 'Asked to join ' + esc(when(u.at))) + '</small></div>' +
+        (u.status === 'allowed' ?
+          '<label class="info" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox"' + (u.campaigns ? ' checked' : '') +
+            ' onchange="tgUser(\'' + id + '\',{campaigns:this.checked})">Can send WhatsApp campaigns (asks YES first)</label>' +
+          '<label class="info" style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox"' + (u.alerts ? ' checked' : '') +
+            ' onchange="tgUser(\'' + id + '\',{alerts:this.checked})">Gets lead alerts</label>' +
+          '<button class="btn ghost" style="margin-top:8px" onclick="tgUser(\'' + id + '\',{remove:true})">Remove</button>' :
+          '<div class="row" style="margin-top:8px"><button class="btn" onclick="tgUser(\'' + id + '\',{allow:true})">Allow</button>' +
+          '<button class="btn ghost" onclick="tgUser(\'' + id + '\',{remove:true})">Ignore</button></div>') + '</div>';
+    }).join('') : '<div class="info" style="margin-top:10px">Nobody has pressed Start yet.</div>') +
+    '<details style="margin-top:12px"><summary class="info" style="cursor:pointer">Change or remove the bot</summary>' +
+      '<input id="tg_token" type="password" autocapitalize="off" placeholder="New token from @BotFather" style="margin-top:8px">' +
+      '<div class="row" style="margin-top:8px"><button class="btn" onclick="tgConnect(this)">Connect again</button>' +
+      '<button class="btn ghost" onclick="tgDisconnect()">Disconnect</button></div></details>' :
+    '<div class="info">Let employees use the bot from Telegram: add leads, get alerts, reply to leads, plan campaigns. ' +
+      '1) In Telegram open <b>@BotFather</b>, send /newbot and pick a name. 2) Copy the token it gives you and paste it here. ' +
+      'The relay link (Setup) must be set first.</div>' +
+    '<input id="tg_token" type="password" autocapitalize="off" placeholder="123456789:AA..." style="margin-top:8px">' +
+    '<button class="btn" style="width:100%;margin-top:8px" onclick="tgConnect(this)">Connect</button>';
+}
+function tgConnect(btn) {
+  btn.disabled = true;
+  call('tgConnect', { token: $('tg_token').value.trim() }).then(function (r) { btn.disabled = false; toast(r.message); loadTelegram(); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+function tgDisconnect() {
+  if (!confirm('Disconnect the Telegram bot? Employees will stop getting answers.')) return;
+  call('tgDisconnect').then(function (r) { toast(r.message); loadTelegram(); }).catch(fail);
+}
+function tgUser(id, o) {
+  if (o.remove && !confirm('Remove this person from the Telegram bot?')) return;
+  o.id = id;
+  call('tgUser', o).then(function (r) { toast('Saved'); renderTelegram(r); }).catch(fail);
 }
 function loadPlaybook() {
   call('playbook').then(function (r) {

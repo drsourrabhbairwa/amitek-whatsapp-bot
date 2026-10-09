@@ -819,6 +819,95 @@ const tests = {
     // repeat guard: a different question is not a repeat
     assert(!env.ctx.repeatsQuestion_('Roughly how many sq ft is the terrace?', [{ direction: 'out', sender: 'bot', body: 'Roughly how many sq ft is the bathroom?' }]));
     assert(!env.ctx.repeatsQuestion_('See https://x.com/a?b=1 ok', [{ direction: 'out', sender: 'bot', body: 'See https://x.com/a?b=1' }]));
+  },
+  'telegram: only allowed employees, guide, add leads, csv, commands, alerts, campaigns'() {
+    const env = load(Object.assign({}, BASE, { props: Object.assign({}, BASE.props, { ANTHROPIC_API_KEY: '' }),
+                                               settings: Object.assign({}, BASE.settings, { RELAY_URL: 'https://relay.example.workers.dev' }) }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    let upd = 1000;
+    const tgMsg = (id, msg) => post(env, { update_id: ++upd, message: Object.assign({ message_id: upd, date: 1, chat: { id, type: 'private' },
+      from: { id, first_name: 'Ravi', is_bot: false } }, msg) });
+    const said = id => env.tg.filter(t => t.method === 'sendMessage' && String(t.body.chat_id) === String(id)).map(t => t.body.text);
+    const last = id => said(id).slice(-1)[0] || '';
+    // connect: bad token refused, good token sets the webhook through the relay with the secret key
+    assert(api('tgConnect', { token: 'nope' }).error);
+    const c = api('tgConnect', { token: '123456:ABCdefGHIjklMNOpqrSTUvwxYZ0123456789' });
+    assert(!c.error, c.error);
+    const hook = env.tg.find(t => t.method === 'setWebhook').body.url;
+    assert(hook.startsWith('https://relay.example.workers.dev/?to=') && hook.endsWith('&key=' + SECRET), hook);
+    assert.strictEqual(env.props.TELEGRAM_BOT_TOKEN, '123456:ABCdefGHIjklMNOpqrSTUvwxYZ0123456789');
+    // a stranger gets no data, the admin is told once
+    const sentBefore = texts(env).length;
+    tgMsg(555, { text: '/start' });
+    tgMsg(555, { text: 'LIST' });
+    assert(/only for the Amitek team/.test(last(555)));
+    assert.strictEqual(said(555).length, 1, 'answers a stranger once');
+    assert.strictEqual(texts(env).length, sentBefore + 1);
+    assert(/Ravi wants to use the team bot/.test(texts(env).slice(-1)[0].text));
+    assert.strictEqual(api('tgStatus').users[0].status, 'asked');
+    // the same update twice is handled once
+    post(env, { update_id: upd, message: { message_id: 1, chat: { id: 555, type: 'private' }, from: { id: 555, first_name: 'Ravi' }, text: 'LIST' } });
+    assert.strictEqual(said(555).length, 1);
+    // allowed: welcome with the guide
+    api('tgUser', { id: '555', allow: true });
+    assert(/allowed now/.test(last(555)) && /Give me leads/.test(last(555)));
+    tgMsg(555, { text: '/help' });
+    assert(/<b>1\. Give me leads<\/b>/.test(last(555)), 'bold becomes HTML');
+    // add leads as text, one per line
+    tgMsg(555, { text: 'Ramesh Sharma, 9812345678, applicator, Jaipur, terrace 2000 sqft\nSunil Builders 98123 45679 Ajmer\nwrong 12345' });
+    assert(/2 new leads added/.test(last(555)), last(555));
+    const r1 = lead(env, '919812345678');
+    assert.strictEqual(r1.Name, 'Ramesh Sharma'); assert.strictEqual(r1.Category, 'Applicator'); assert.strictEqual(r1.City, 'Jaipur');
+    assert.strictEqual(r1.Requirement, 'terrace 2000 sqft'); assert.strictEqual(r1.Status, 'New');
+    assert.strictEqual(lead(env, '919812345679').Category, 'Builder', 'sorted by name');
+    assert.strictEqual(lead(env, '919812345679').Name, 'Sunil Builders'); assert.strictEqual(lead(env, '919812345679').City, 'Ajmer');
+    tgMsg(555, { text: 'ADD Ramesh, 9812345678' });
+    assert(/0 new leads added/.test(last(555)) && /already in the list/.test(last(555)));
+    // CSV file
+    env.tgFiles['f1'] = 'Name,Mobile,Business Type,City\n"Gupta, Mohan",9822222222,Dealer,Udaipur\nX,123,Dealer,Y\n';
+    tgMsg(555, { document: { file_id: 'f1', file_name: 'leads.csv', mime_type: 'text/csv', file_size: 90 } });
+    assert(/1 new lead added/.test(last(555)) && /1 skipped/.test(last(555)), last(555));
+    assert.strictEqual(lead(env, '919822222222').Name, 'Gupta, Mohan'); assert.strictEqual(lead(env, '919822222222').Category, 'Dealer');
+    tgMsg(555, { document: { file_id: 'f2', file_name: 'leads.xlsx' } });
+    assert(/save the Excel sheet as CSV/.test(last(555)));
+    // INFO, commands, reply within 24 hours
+    tgMsg(555, { text: 'INFO 9812345678' });
+    assert(/Ramesh Sharma/.test(last(555)) && /Applicator/.test(last(555)));
+    tgMsg(555, { text: 'LATER 9812345678 2 site visit' });
+    assert(/follow up on/.test(last(555)), last(555));
+    tgMsg(555, { text: 'REPLY 9812345678 Namaste ji, kal call karta hoon' });
+    assert(/Sent on WhatsApp/.test(last(555)), last(555));
+    assert.strictEqual(texts(env).slice(-1)[0].to, '919812345678');
+    // a question without an AI key gets the guide; an unknown word too
+    tgMsg(555, { text: 'lead kaise add karu?' });
+    assert(/Give me leads/.test(last(555)));
+    // campaigns need the admin's tick
+    tgMsg(555, { text: 'applicators ko kal 11 baje message bhejo' });
+    assert(/Only people the admin allowed/.test(last(555)), last(555));
+    tgMsg(555, { text: 'YES' });
+    assert(/Give me leads/.test(last(555)));
+    api('tgUser', { id: '555', campaigns: true });
+    tgMsg(555, { text: 'applicators ko kal 11 baje message bhejo' });
+    assert(/YES/.test(last(555)) && /Applicator/.test(last(555)), last(555));
+    tgMsg(555, { text: 'NO' });
+    assert(/Cancelled/.test(last(555)));
+    // lead alerts reach allowed people on Telegram, not people who turned them off
+    env.ctx.alertLead_({ Phone: '919812345678', Category: 'Applicator' }, '*🔥 HOT LEAD* test');
+    assert(/HOT LEAD/.test(last(555)));
+    api('tgUser', { id: '555', alerts: false });
+    const n0 = said(555).length;
+    env.ctx.alertSales_('summary');
+    assert.strictEqual(said(555).length, n0);
+    // groups are ignored; removed people are strangers again
+    post(env, { update_id: ++upd, message: { message_id: 9, chat: { id: -100, type: 'group' }, from: { id: 555, first_name: 'Ravi' }, text: 'LIST' } });
+    assert.strictEqual(said(-100).length, 0);
+    api('tgUser', { id: '555', remove: true });
+    tgMsg(555, { text: 'LIST' });
+    assert(/only for the Amitek team/.test(last(555)));
+    // wrong key: nothing happens
+    const before = env.tg.length;
+    env.ctx.doPost({ parameter: { key: 'bad' }, postData: { contents: JSON.stringify({ update_id: 5, message: { chat: { id: 1, type: 'private' }, from: { id: 1 }, text: 'hi' } }) } });
+    assert.strictEqual(env.tg.length, before);
   }
 };
 
