@@ -31,6 +31,7 @@ var TG_GUIDE = [
   '',
   '*4. Campaigns* (if the admin allowed you)',
   'applicators ko monday 11 baje message bhejo - I show the plan, you reply YES',
+  'Add "bot reply mat karna" if the team will answer: the bot stays quiet and every reply comes to you here.',
   'CAMPAIGNS - what is running',
   '',
   'Any other question about the bot: just ask in your own words.'

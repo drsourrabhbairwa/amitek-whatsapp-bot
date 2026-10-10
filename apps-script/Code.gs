@@ -57,6 +57,7 @@ var DEFAULT_SETTINGS = {
   LEARN_AUTO: 'true',                // every Monday the bot suggests what it learned from last week's chats (needs approval)
   BUSINESS_NUMBER: '',               // the WhatsApp number leads message (for wa.me links and QR codes), e.g. 919876543210
   SORT_RULES: '',                    // what the owner taught the bot about telling lead types apart (used when it sorts leads)
+  TEAM_TEMPLATES_QUIET: 'true',     // a template sent from BlueTick by the team: the bot never answers that lead (team handles it)
   CATEGORY_PLAYBOOK: ''              // JSON {"Applicator": {template, language, pitch}}: opening template and offer per category (Grow.gs)
 };
 
@@ -272,6 +273,7 @@ function messageText_(m) {
     var cap = (m[t] && m[t].caption) || '';
     return '[sent a ' + t + ']' + (cap ? ' ' + cap : '');
   }
+  if (t === 'template') return '[template ' + ((m.template && m.template.name) || '') + ']';
   if (t === 'location') return '[shared location ' + ((m.location && (m.location.name || m.location.address)) || '') + ']';
   return '[' + (t || 'unknown') + ' message]';
 }
@@ -287,13 +289,13 @@ function parseWebhook_(payload) {
       (v.messages || []).forEach(function (m) {
         var text = messageText_(m);
         if (business && m.from === business && m.to) {
-          echoes.push({ phone: String(m.to), id: m.id || '', text: text });
+          echoes.push({ phone: String(m.to), id: m.id || '', text: text, type: m.type || '' });
           return;
         }
         inbound.push({ phone: String(m.from || ''), id: m.id || '', text: text, name: names[m.from] || '' });
       });
       (v.message_echoes || []).forEach(function (m) {
-        echoes.push({ phone: String(m.to || ''), id: m.id || '', text: messageText_(m) });
+        echoes.push({ phone: String(m.to || ''), id: m.id || '', text: messageText_(m), type: m.type || '' });
       });
     });
   });
@@ -660,14 +662,32 @@ function runTool_(name, args, result) {
 }
 
 // ===================================================================== bot logic
+/** "Team only" leads: the bot never answers them (a quiet campaign, or a template the team sent from BlueTick). */
+var TEAM_ONLY_DAYS = 3650;
+function teamOnlyUntil_() { return addHours_(24 * TEAM_ONLY_DAYS); }
+function isTeamOnly_(lead) {
+  var p = asDate_(lead && lead['Bot Paused Until']);
+  return !!p && p - new Date() > 400 * 24 * 3600000;
+}
+/** A human reply pauses the bot for a while, but never shortens a longer pause. */
+function humanPause_(lead) {
+  var want = addHours_(settingNum_('HUMAN_TAKEOVER_HOURS')), have = asDate_(lead && lead['Bot Paused Until']);
+  return have && have > want ? have : want;
+}
+
 function handleEcho_(e) {
   if (!e.phone || messageSeen_(e.id)) return;  // our own message coming back, or a duplicate
   if (isTeam_(e.phone)) return;  // alerts we sent to our own team
-  var botSaid = history_(e.phone, 5).some(function (h) { return h.sender === 'bot' && h.body === e.text; });
+  var botSaid = history_(e.phone, 5).some(function (h) { return (h.sender === 'bot' || h.sender === 'campaign') && h.body === e.text; });
   if (botSaid) return;  // the bot's own reply, echoed back without a matching id
+  var ours = e.type === 'template' && history_(e.phone, 3).some(function (h) {
+    return h.sender === 'campaign' && Date.now() - new Date(h.time).getTime() < 30 * 60000; });
+  if (ours) return;  // our own campaign template coming back
   addMessage_(e.phone, 'out', 'human', e.text, e.id);
-  upsertLead_(e.phone, { 'Last Human Contact': new Date(),
-                         'Bot Paused Until': addHours_(settingNum_('HUMAN_TAKEOVER_HOURS')) }, 'sales');
+  var lead = getLead_(e.phone);
+  // a template sent from BlueTick (an employee's bulk campaign): the team handles the replies, the bot stays out
+  var until = e.type === 'template' && setting_('TEAM_TEMPLATES_QUIET') !== 'false' ? teamOnlyUntil_() : humanPause_(lead);
+  upsertLead_(e.phone, { 'Last Human Contact': new Date(), 'Bot Paused Until': until }, 'sales');
 }
 
 function handleInbound_(m) {
@@ -705,6 +725,11 @@ function handleInbound_(m) {
     return;
   }
   var paused = asDate_(lead['Bot Paused Until']);
+  if (isTeamOnly_(lead)) {  // a quiet campaign: every reply goes straight to the team
+    alertLead_(lead, '💬 *Reply* from ' + label_(lead) + (lead['Campaign'] ? ' (' + lead['Campaign'] + ')' : '') + ':\n' +
+               String(m.text).slice(0, 500) + '\n\nThe bot is not answering this lead; please reply. INFO ' + String(lead['Phone']).slice(-10));
+    return;
+  }
   if (paused && paused > new Date()) return;  // a human from the team is handling this chat
   if (!botEnabled_()) return;                  // bot switched off: the team replies, hourly check alerts them
 

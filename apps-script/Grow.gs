@@ -56,7 +56,7 @@ function cleanFilter_(f) {
     return (Array.isArray(v) ? v : String(v || '').split(',')).map(function (x) { return String(x).trim(); }).filter(Boolean);
   };
   return { categories: list(f.categories), cities: list(f.cities), states: list(f.states),
-           newOnly: f.newOnly !== false, canMessageOnly: f.canMessageOnly !== false, keepOn: !!f.keepOn, auto: !!f.auto,
+           newOnly: f.newOnly !== false, canMessageOnly: f.canMessageOnly !== false, keepOn: !!f.keepOn, auto: !!f.auto, quiet: !!f.quiet,
            limit: Math.max(0, parseInt(f.limit, 10) || 0) };
 }
 
@@ -241,6 +241,7 @@ function sendBatch_(c, max) {
       log.appendRow([new Date(), c['ID'], phone, 'sent', id === 'sent' ? '' : id]);
       addMessage_(phone, 'out', 'campaign', campaignText_(c, l), id === 'sent' ? '' : id);
       var u = { 'Campaign': c['Name'], 'Last Outbound': new Date() };
+      if (filter.quiet) u['Bot Paused Until'] = teamOnlyUntil_();  // the team answers replies to this campaign, not the bot
       if (['', 'New'].indexOf(String(l['Status'])) >= 0) u['Status'] = 'Contacted';
       upsertLead_(phone, u, 'campaign');
     } else {
@@ -708,7 +709,9 @@ function readRequest_(text, now) {
     if (new RegExp('\\b' + k + '\\b').test(t)) cities[k.replace(/\b\w/g, function (x) { return x.toUpperCase(); })] = true;
   });
   var lim = t.match(/\b(?:first|pehle|sirf|only|max|limit)\s*(\d{1,5})\b/) || t.match(/\b(\d{1,5})\s*(?:leads|logo|log|people|logon)\b/);
-  return { categories: cats, cities: Object.keys(cities), at: parseWhen_(t, now), limit: lim ? parseInt(lim[1], 10) : 0 };
+  // "bot reply mat karna" / "team will reply": the bot stays quiet with these leads and the team answers
+  var quiet = /\bbot\b[^.\n]{0,25}\b(mat|na|nahi|nahin|no|not|off|band|chup|quiet|silent)\b|\b(no|without|bina)\s+bot\b|\bteam\s+(will\s+)?(reply|replies|answer|baat|jawab)/.test(t);
+  return { categories: cats, cities: Object.keys(cities), at: parseWhen_(t, now), limit: lim ? parseInt(lim[1], 10) : 0, quiet: quiet };
 }
 
 /** Builds the plan the team confirms with YES. */
@@ -721,11 +724,12 @@ function makePlan_(text) {
   r.categories.forEach(function (cat) {
     var p = book[cat] || {};
     if (!p.template) { missing.push(cat); return; }
-    var filter = cleanFilter_({ categories: [cat], cities: r.cities, limit: r.limit });
+    var filter = cleanFilter_({ categories: [cat], cities: r.cities, limit: r.limit, quiet: r.quiet });
     items.push({ category: cat, template: p.template, language: p.language || 'en', count: audience_(filter).length, filter: filter });
   });
   if (!items.length) return { error: 'No template is set for ' + missing.join(', ') + '. Add it in the app: Settings > Pitch by category.' };
-  return { items: items, missing: missing, at: r.at ? r.at.toISOString() : '', cities: r.cities, limit: r.limit, made: now.toISOString() };
+  return { items: items, missing: missing, at: r.at ? r.at.toISOString() : '', cities: r.cities, limit: r.limit, quiet: r.quiet,
+           made: now.toISOString() };
 }
 
 function planText_(plan) {
@@ -734,6 +738,8 @@ function planText_(plan) {
   lines.push('Cities: ' + (plan.cities.length ? plan.cities.join(', ') : 'all (no city from your message matched the lead list)'));
   if (plan.limit) lines.push('At most ' + plan.limit + ' per category');
   lines.push('When: ' + (plan.at ? fmt_(plan.at) : 'now'));
+  lines.push(plan.quiet ? '🤫 Bot stays quiet: replies come to the team (alert each time), the team answers.' :
+                          'Replies: the bot answers and passes interested people to the team.');
   lines.push('Only leads never messaged before. Up to ' + growSetting_('CAMPAIGN_DAILY_LIMIT') + ' a day, sent ' + hoursText_() + ' (India time).');
   var unsorted = leadsFull_().filter(function (l) {
     var c = String(l['Category'] || ''); return (!c || c === 'Other') && MOBILE_RE.test(String(l['Phone'] || ''));
@@ -751,7 +757,7 @@ function runPlan_(plan, who) {
   if (at && at <= new Date()) at = null;
   var stamp = Utilities.formatDate(at || new Date(), 'Asia/Kolkata', 'dd MMM');
   var ids = plan.items.filter(function (i) { return i.count > 0; }).map(function (i) {
-    return newCampaign_({ 'Name': i.category + ' · ' + stamp, 'Template': i.template, 'Language': i.language, 'Uses Name': 'true',
+    return newCampaign_({ 'Name': i.category + ' · ' + stamp + (plan.quiet ? ' · team' : ''), 'Template': i.template, 'Language': i.language, 'Uses Name': 'true',
                           'Message Text': '', 'Filter': JSON.stringify(i.filter), 'Start At': at || '', 'Started': at ? '' : new Date() },
                         at ? 'Scheduled' : 'Running');
   });

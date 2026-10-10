@@ -190,7 +190,7 @@ var APP_ACTIONS = {
     }
     addMessage_(phone, 'out', 'human', text, id === 'sent' ? '' : id);
     upsertLead_(phone, { 'Last Outbound': new Date(), 'Last Human Contact': new Date(),
-                         'Bot Paused Until': addHours_(settingNum_('HUMAN_TAKEOVER_HOURS')) }, 'app');
+                         'Bot Paused Until': humanPause_(lead) }, 'app');
     return { message: 'Sent' };
   },
 

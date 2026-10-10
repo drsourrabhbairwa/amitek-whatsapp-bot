@@ -815,7 +815,7 @@ function planOk(btn) {
 }
 function campCard(c) {
   var f = c.filter || {}, pct = c.total ? Math.min(100, Math.round(100 * c.sent / c.total)) : 0;
-  var who = [f.keepOn ? 'Welcome: every new lead' : '', (f.categories || []).join(', '), (f.cities || []).join(', '), (f.states || []).join(', '),
+  var who = [f.keepOn ? 'Welcome: every new lead' : '', f.quiet ? '🤫 team replies' : '', (f.categories || []).join(', '), (f.cities || []).join(', '), (f.states || []).join(', '),
              f.limit ? 'max ' + f.limit : ''].filter(Boolean).join(' · ') || 'All leads';
   var btns = [];
   if (c.status === 'Draft' || c.status === 'Paused') btns.push('<button class="btn green" onclick="campStart(\'' + c.id + '\',this)">' + (c.status === 'Draft' ? '▶ Start' : '▶ Resume') + '</button>');
@@ -908,6 +908,8 @@ function renderCampForm() {
     '<label class="check"><input id="c_can" type="checkbox"' + (f.canMessageOnly !== false ? ' checked' : '') + ' onchange="preview()"><span>Skip leads marked "Can Message = No"</span></label>' +
     '<label class="check"><input id="c_keep" type="checkbox"' + (f.keepOn ? ' checked' : '') + ' onchange="preview()"><span>Welcome message: keep running and greet every new lead you add later' +
     '<small>Leads you add in the app from now on get this template automatically. Your existing list is not messaged.</small></span></label>' +
+    '<label class="check"><input id="c_quiet" type="checkbox"' + (f.quiet ? ' checked' : '') + '><span>Team replies, bot stays quiet' +
+    '<small>The bot does not answer anyone from this campaign. Every reply comes to the team as an alert (WhatsApp and Telegram).</small></span></label>' +
     '<label>Start on (blank = when you tap Start)</label><input id="c_start" type="datetime-local" value="' + esc(localInput(c.startAt)) + '">' +
     '<div class="info" style="margin-top:12px" id="c_count">Counting…</div>' +
     '<div class="info" style="margin-top:4px">Always skipped: people who said STOP, won or lost leads, landlines and the salesperson.</div>' +
@@ -926,6 +928,7 @@ function readCamp() {
   c.startAt = $('c_start').value ? new Date($('c_start').value).toISOString() : '';
   f.cities = $('c_cities').value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
   f.limit = parseInt($('c_limit').value, 10) || 0; f.newOnly = $('c_new').checked; f.canMessageOnly = $('c_can').checked; f.keepOn = $('c_keep').checked;
+  f.quiet = $('c_quiet').checked;
   return c;
 }
 function preview() {

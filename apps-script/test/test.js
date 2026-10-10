@@ -908,6 +908,40 @@ const tests = {
     const before = env.tg.length;
     env.ctx.doPost({ parameter: { key: 'bad' }, postData: { contents: JSON.stringify({ update_id: 5, message: { chat: { id: 1, type: 'private' }, from: { id: 1 }, text: 'hi' } }) } });
     assert.strictEqual(env.tg.length, before);
+  },
+  'team-only campaigns: the bot stays quiet, every reply alerts the team, BlueTick templates too'() {
+    const env = load(BASE);
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    upsert(env, '919811110001', { Name: 'Ramesh', City: 'Jaipur', Category: 'Applicator' });
+    upsert(env, '919811110002', { Name: 'Shree', City: 'Jaipur', Category: 'Dealer' });
+    const id = api('campaignSave', { name: 'Team push', template: 'amitek_intro', language: 'hi', filter: { categories: ['Applicator'], quiet: true } }).id;
+    assert(api('campaignStart', { id }).message.includes('1 sent'));
+    assert(env.ctx.isTeamOnly_(lead(env, '919811110001')));
+    // the lead replies: no AI call, no bot answer, the team gets the message
+    post(env, payload([text('919811110001', 'haan details bhejo')]));
+    assert.strictEqual(env.claudeCalls.length, 0);
+    const alert = texts(env).slice(-1)[0];
+    assert.strictEqual(alert.to, SALES); assert(/Reply.*Ramesh/.test(alert.text) && /haan details bhejo/.test(alert.text), alert.text);
+    // a team reply from the app keeps the bot quiet (does not shrink the pause to 12 hours)
+    assert(!api('reply', { phone: '919811110001', text: 'Ji, call karta hoon' }).error);
+    assert(env.ctx.isTeamOnly_(lead(env, '919811110001')));
+    // STOP still works
+    post(env, payload([text('919811110001', 'stop')]));
+    assert.strictEqual(lead(env, '919811110001')['Opt-in'], 'Opted out');
+    // a template an employee sends from BlueTick: that lead becomes team-only too
+    post(env, { entry: [{ changes: [{ field: 'messages', value: { metadata: { display_phone_number: BUSINESS },
+      message_echoes: [{ from: BUSINESS, to: '919811110002', id: 'wamid.bt1', type: 'template', template: { name: 'amitek_hello' } }] } }] }] });
+    assert(env.ctx.isTeamOnly_(lead(env, '919811110002')));
+    // a normal text from BlueTick only pauses for a while
+    upsert(env, '919811110003', { Name: 'Om' });
+    post(env, { entry: [{ changes: [{ field: 'messages', value: { metadata: { display_phone_number: BUSINESS },
+      message_echoes: [{ from: BUSINESS, to: '919811110003', id: 'wamid.bt2', type: 'text', text: { body: 'hello' } }] } }] }] });
+    assert(!env.ctx.isTeamOnly_(lead(env, '919811110003')));
+    // a chat plan can ask for it
+    const p = env.ctx.makePlan_('applicators ko message bhejo, bot reply mat karna');
+    assert(p.quiet && p.items[0].filter.quiet);
+    assert(/Bot stays quiet/.test(env.ctx.planText_(p)));
+    assert(!env.ctx.makePlan_('applicators ko message bhejo').quiet);
   }
 };
 

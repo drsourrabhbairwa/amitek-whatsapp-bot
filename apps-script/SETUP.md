@@ -81,6 +81,15 @@ How employees give leads: one per line, `name, mobile, category, city, note`, or
 (columns like Name, Phone, Category, City). Excel: save as CSV first. New leads wait for the next campaign;
 existing numbers are left as they are. Groups are ignored, strangers get no data.
 
+## Campaigns the team answers (bot stays quiet)
+
+- In the app's campaign form tick **Team replies, bot stays quiet**, or say it in the plan: "dealers ko message bhejo, bot reply mat karna".
+- Bulk messages an employee sends from BlueTick with a template: the bot stays quiet for those leads too (turn on the
+  "Outgoing Messages" event in BlueTick's webhook so the bot sees them). Setting TEAM_TEMPLATES_QUIET=false turns this off.
+- Every reply from such a lead comes to the team as an alert (WhatsApp and Telegram). STOP still works.
+  To let the bot talk to one lead again: open the lead in the app and resume the bot.
+- To stop the bot for everyone: Settings > "Bot replies automatically" off.
+
 ## Teaching the bot (Learn tab)
 - **Teach the bot**: paste (or pick a text/CSV file) your company profile, product list, price list or an old campaign export.
   "Let AI learn from it" pulls out the useful points; "Save as it is" adds the whole text.
