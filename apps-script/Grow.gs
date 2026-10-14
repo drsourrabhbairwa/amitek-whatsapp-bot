@@ -176,9 +176,14 @@ function hoursText_() {
 
 /** Timer (every 5 minutes while a campaign runs): sends the next batch within the daily limit. */
 function campaignTick() {
+  var props = PropertiesService.getScriptProperties();
+  if (Date.now() - Number(props.getProperty('TICK_STARTED') || 0) < 4 * 60000) return { sent: 0, reason: 'busy' };
+  props.setProperty('TICK_STARTED', String(Date.now()));
   var lock = LockService.getScriptLock();
-  lock.waitLock(25000);
-  try { return campaignTick_(); } finally { lock.releaseLock(); }
+  try {
+    lock.waitLock(25000);
+    try { return campaignTick_(); } finally { lock.releaseLock(); }
+  } finally { props.deleteProperty('TICK_STARTED'); }
 }
 
 function campaignTick_() {
