@@ -130,4 +130,4 @@ and is built by GitHub Actions on every push.
 
 ## Website version of the app
 
-The same app page is also published as a static site in `web/` (built from `apps-script/App.html` by `node apps-script/build.js`). Open it in a desktop browser, paste your Apps Script Web app link once, and enter the app PIN. The data stays in your Google Sheet; the site holds no lead data and no keys. Host it with GitHub Pages (repository Settings > Pages > deploy from the `web` folder on the branch), or open `web/index.html` directly.
+The same app page is also published as a static site in `docs/` (built from `apps-script/App.html` by `node apps-script/build.js`). Open it in a desktop browser, paste your Apps Script Web app link once, and enter the app PIN. The data stays in your Google Sheet; the site holds no lead data and no keys. Host it with GitHub Pages (repository Settings > Pages > deploy from the `docs` folder on the branch), or open `docs/index.html` directly.

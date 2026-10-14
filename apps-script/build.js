@@ -28,9 +28,9 @@ fs.mkdirSync(path.join(dir, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(dir, 'dist', 'Amitek_Bot.gs'), out);
 console.log('wrote dist/Amitek_Bot.gs', out.length, 'bytes');
 
-// Website version: the same app page, hosted as a static site (e.g. GitHub Pages from /web).
+// Website version: the same app page, hosted as a static site (GitHub Pages from /docs).
 // It has no Apps Script inside it, so the user pastes their Web app link once (saved in the browser).
-const webDir = path.join(dir, '..', 'web');
+const webDir = path.join(dir, '..', 'docs');
 fs.mkdirSync(webDir, { recursive: true });
 fs.writeFileSync(path.join(webDir, 'index.html'), read('App.html'));
-console.log('wrote web/index.html');
+console.log('wrote docs/index.html');
