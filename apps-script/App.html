@@ -308,14 +308,14 @@ function setHeader(title, back) {
   $('title').textContent = title; $('backBtn').classList.toggle('hidden', !back);
   document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === S.tab); });
 }
-function showTab(tab) { S.tab = tab; S.lead = null; S.camp = null; S.clean = false; S.stack = []; render(); window.scrollTo(0, 0); }
-function goBack() { S.lead = null; S.camp = null; S.clean = false; render(); }
+function showTab(tab) { S.tab = tab; S.lead = null; S.camp = null; S.clean = false; S.manage = ''; S.stack = []; render(); window.scrollTo(0, 0); }
+function goBack() { S.lead = null; S.camp = null; S.clean = false; S.manage = ''; render(); }
 function refresh() { if (S.lead) openLead(S.lead.card.phone, true); else render(); }
 function loading() { $('main').innerHTML = '<div class="loading">Loading…</div>'; }
 
 function render() {
   if (S.tab === 'today') return renderToday();
-  if (S.tab === 'leads') return S.clean ? renderClean() : renderLeads();
+  if (S.tab === 'leads') return S.clean ? renderClean() : S.manage === 'bulk' ? renderBulk() : S.manage === 'import' ? renderImport() : renderLeads();
   if (S.tab === 'add') return renderAdd();
   if (S.tab === 'settings') return renderSettings();
   if (S.tab === 'send') return S.camp ? renderCampForm() : renderCampaigns();
@@ -373,7 +373,10 @@ function renderLeads() {
   $('main').innerHTML = '<div class="search"><input id="q" type="text" placeholder="Search name, number, city…" value="' + esc(S.q) + '"></div>' +
     '<div class="chips">' + STATUSES.map(function (s) {
       return '<button class="chip' + (S.status === s ? ' on' : '') + '" onclick="setStatus(\'' + s + '\')">' + (s || 'All') + '</button>';
-    }).join('') + '</div><div style="margin:0 2px 8px"><button class="btn soft" style="width:100%" onclick="openClean()">🧹 Check lead data</button></div>' +
+    }).join('') + '</div><div class="row" style="margin:0 2px 8px">' +
+    '<div><button class="btn soft" style="width:100%" onclick="openClean()">🧹 Check data</button></div>' +
+    '<div><button class="btn soft" style="width:100%" onclick="openManage(\'bulk\')">✏️ Bulk edit</button></div>' +
+    '<div><button class="btn soft" style="width:100%" onclick="openManage(\'import\')">⬆️ Import</button></div></div>' +
     '<div id="results"><div class="loading">Loading…</div></div>';
   var q = $('q');
   q.addEventListener('input', function () { clearTimeout(renderLeads.h); renderLeads.h = setTimeout(function () { S.q = q.value; search(); }, 350); });
@@ -407,6 +410,142 @@ function fixPhones() {
   call('cleanFix').then(function (r) {
     toast('Fixed ' + r.fixed + ' phone numbers');
     renderClean();
+  }).catch(fail);
+}
+
+// ---------------------------------------------------------------- Bulk edit, import, delete
+var CATEGORY_CHOICES = ['Applicator', 'Contractor', 'Builder', 'Architect', 'Dealer', 'Manufacturer', 'End Client', 'Other'];
+var BULK_FIELD_CHOICES = ['Category', 'Tier', 'City', 'Assigned To'];
+function openManage(which) { S.manage = which; render(); window.scrollTo(0, 0); }
+function renderBulk() {
+  setHeader('Bulk edit', true);
+  var opts = function (list, anyLabel) {
+    return (anyLabel ? '<option value="">' + anyLabel + '</option>' : '') + list.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('');
+  };
+  $('main').innerHTML = '<div class="card form">' +
+    '<div class="info">Choose the leads with a filter, then the field and the new value. Preview first. Nothing changes until you press Apply.</div>' +
+    '<label>Category is</label><select id="bCat" onchange="bulkDirty()">' + opts(CATEGORY_CHOICES, 'Any') + '</select>' +
+    '<label>City contains</label><input id="bCity" type="text" placeholder="e.g. Jaipur" oninput="bulkDirty()">' +
+    '<label>Status is</label><select id="bStatus" onchange="bulkDirty()">' + opts(STATUSES.slice(1), 'Any') + '</select>' +
+    '<label>Change this field</label><select id="bField" onchange="bulkDirty()">' + opts(BULK_FIELD_CHOICES) + '</select>' +
+    '<label>New value</label><input id="bValue" type="text" oninput="bulkDirty()">' +
+    '<div class="row"><div><button class="btn ghost" style="width:100%" onclick="bulkPreview()">Preview</button></div>' +
+    '<div><button class="btn" id="bApply" disabled style="width:100%" onclick="bulkApply()">Apply</button></div></div>' +
+    '<div id="bOut"></div></div>';
+}
+function bulkBody() {
+  return { filter: { category: $('bCat').value, city: $('bCity').value, status: $('bStatus').value },
+           field: $('bField').value, value: $('bValue').value };
+}
+function bulkDirty() { S.bulkCount = 0; $('bApply').disabled = true; }
+function bulkPreview() {
+  call('bulkEdit', Object.assign(bulkBody(), { preview: true })).then(function (r) {
+    if (r.error) return fail(new Error(r.error));
+    S.bulkCount = r.count;
+    $('bApply').disabled = !r.count;
+    $('bOut').innerHTML = '<div class="info" style="margin-top:12px"><b>' + r.count + ' leads</b> match. ' + esc(r.field) +
+      ' will become "' + esc(r.value) + '" for them.</div>' + r.sample.map(function (x) {
+        return '<div class="card" style="margin:6px 0;padding:10px"><b>' + esc(x.name || 'No name') + '</b><div class="info">+' +
+          esc(x.phone) + ' · now: ' + esc(x.from || '—') + '</div></div>';
+      }).join('') + (r.count > r.sample.length ? '<div class="info">Showing ' + r.sample.length + ' of ' + r.count + '</div>' : '');
+  }).catch(fail);
+}
+function bulkApply() {
+  var n = S.bulkCount || 0;
+  if (!n || !confirm('Change ' + n + ' leads? This cannot be undone with one tap.')) return;
+  $('bApply').disabled = true;
+  call('bulkEdit', Object.assign(bulkBody(), { preview: false })).then(function (r) {
+    if (r.error) return fail(new Error(r.error));
+    toast(r.message);
+    $('bOut').innerHTML = '<div class="info" style="margin-top:12px">' + esc(r.message) + '. Check the Leads list to see them.</div>';
+    S.bulkCount = 0;
+  }).catch(function (e) { $('bApply').disabled = false; fail(e); });
+}
+function renderImport() {
+  setHeader('Import leads', true);
+  $('main').innerHTML = '<div class="card form">' +
+    '<div class="info">Export your lead sheet as CSV from Excel or Google Sheets, then choose it here, or paste the text. ' +
+    'Columns: Phone (or WhatsApp Number), Name, Business, City, State, Category. Numbers already in the list are skipped.</div>' +
+    '<label>CSV file</label><input type="file" accept=".csv,text/csv" onchange="pickCsv(this)">' +
+    '<label>Or paste CSV text</label><textarea id="csvText" rows="6" placeholder="Phone,Name,City,Category"></textarea>' +
+    '<button class="btn soft" style="width:100%" onclick="previewImport()">Check the file</button>' +
+    '<div id="imOut"></div></div>';
+}
+function pickCsv(input) {
+  var f = input.files && input.files[0];
+  if (!f) return;
+  var rd = new FileReader();
+  rd.onload = function () { $('csvText').value = String(rd.result || ''); previewImport(); };
+  rd.readAsText(f);
+}
+function parseCsv(text) {
+  var rows = [], row = [], cell = '', q = false;
+  for (var i = 0; i < text.length; i++) {
+    var ch = text.charAt(i);
+    if (q) {
+      if (ch === '"') { if (text.charAt(i + 1) === '"') { cell += '"'; i++; } else q = false; }
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text.charAt(i + 1) === '\n') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(function (r) { return r.some(function (c) { return c.trim(); }); });
+}
+function importRows(text) {
+  var table = parseCsv(text.replace(/^﻿/, ''));
+  if (table.length < 2) return [];
+  var head = table[0].map(function (h) { return h.trim().toLowerCase(); });
+  var pick = function (r, names) {
+    for (var j = 0; j < names.length; j++) {
+      var k = head.indexOf(names[j]);
+      if (k >= 0 && r[k] && String(r[k]).trim()) return String(r[k]).trim();
+    }
+    return '';
+  };
+  return table.slice(1).map(function (r) {
+    return { phone: pick(r, ['phone', 'whatsapp number', 'mobile', 'number']), name: pick(r, ['name', 'display name']),
+             business: pick(r, ['business', 'business name']), city: pick(r, ['city']), state: pick(r, ['state']),
+             category: pick(r, ['category', 'lead category']) };
+  });
+}
+function previewImport() {
+  S.importRows = importRows($('csvText').value);
+  var n = S.importRows.length;
+  $('imOut').innerHTML = '<div class="info" style="margin-top:12px"><b>' + n + ' rows</b> found. Duplicates are skipped.</div>' +
+    (n ? '<button class="btn green" style="width:100%;margin-top:8px" onclick="runImport()">Import ' + n + ' rows</button>' : '');
+}
+function runImport() {
+  var rows = S.importRows || [], total = { added: 0, skipped: 0, invalid: 0 }, i = 0;
+  if (!rows.length || !confirm('Import ' + rows.length + ' rows?')) return;
+  (function next() {
+    if (i >= rows.length) {
+      toast('Added ' + total.added + ', skipped ' + total.skipped + ', invalid ' + total.invalid);
+      S.importRows = [];
+      $('imOut').innerHTML = '<div class="info" style="margin-top:12px">Added ' + total.added + ', skipped ' + total.skipped + ', invalid ' + total.invalid + '.</div>';
+      return;
+    }
+    var chunk = rows.slice(i, i + 200);
+    i += 200;
+    call('importLeads', { rows: chunk }).then(function (r) {
+      if (r.error) return fail(new Error(r.error));
+      total.added += r.added; total.skipped += r.skipped; total.invalid += r.invalid;
+      $('imOut').innerHTML = '<div class="info">Working… ' + Math.min(i, rows.length) + ' of ' + rows.length + '</div>';
+      next();
+    }).catch(fail);
+  })();
+}
+function deleteLeadNow() {
+  var c = S.lead.card;
+  if (!confirm('Delete ' + (c.name || 'this lead') + ' (+' + c.phone + ')? This removes the lead from the sheet and cannot be undone.')) return;
+  call('deleteLead', { phone: c.phone, confirm: true }).then(function (r) {
+    if (r.error) return fail(new Error(r.error));
+    toast(r.message);
+    S.lead = null;
+    render();
   }).catch(fail);
 }
 function search() {
@@ -484,7 +623,8 @@ function renderLeadBody() {
       field('Assigned To', 'Assigned to') +
       '<label>Requirement</label><textarea data-k="Requirement" rows="3">' + esc(l['Requirement']) + '</textarea>' +
       '<label>Follow-up note</label><textarea data-k="Follow-up Note" rows="2">' + esc(l['Follow-up Note']) + '</textarea>' +
-      '<button class="btn" style="width:100%;margin-top:14px" onclick="saveLead(this)">Save</button></div>' +
+      '<button class="btn" style="width:100%;margin-top:14px" onclick="saveLead(this)">Save</button>' +
+      '<button class="btn red" style="width:100%;margin-top:8px" onclick="deleteLeadNow()">Delete this lead</button></div>' +
       '<div class="info" style="margin:10px 2px">Lead ID ' + esc(l['Lead ID'] || '—') + ' · Campaign ' + esc(l['Campaign'] || '—') +
       ' · Opt-in ' + esc(l['Opt-in'] || '—') + (l['State'] ? ' · ' + esc(l['State']) : '') + '</div>';
   } else {

@@ -234,6 +234,29 @@ const tests = {
     for (let i = 0; i < 10; i++) env.ctx.api('nope', 'dashboard', '{}');
     assert(JSON.parse(env.ctx.api(env.props.APP_PIN, 'dashboard', '{}')).error.includes('Too many'));
   },
+  'app: bulk edit previews before applying, delete needs confirmation, import skips duplicates'() {
+    const env = load(BASE);
+    const api = (a, x) => JSON.parse(env.ctx.api(env.props.APP_PIN, a, JSON.stringify(x || {})));
+    api('addLead', { phone: '9811100001', name: 'Ramesh', city: 'Jaipur', category: 'Dealer' });
+    api('addLead', { phone: '9811100002', name: 'Suresh', city: 'Jaipur', category: 'Dealer' });
+    api('addLead', { phone: '9811100003', name: 'Mahesh', city: 'Ajmer', category: 'Dealer' });
+    const p = (x) => ({ filter: { city: 'jaipur' }, field: 'Assigned To', value: 'Ravi', ...x });
+    const pv = api('bulkEdit', p({}));
+    assert.strictEqual(pv.count, 2, 'preview counts Jaipur leads');
+    assert.strictEqual(api('lead', { phone: '9811100001' }).lead['Assigned To'], '', 'preview changes nothing');
+    assert.strictEqual(api('bulkEdit', p({ preview: false })).count, 2);
+    assert.strictEqual(api('lead', { phone: '9811100002' }).lead['Assigned To'], 'Ravi');
+    assert.strictEqual(api('lead', { phone: '9811100003' }).lead['Assigned To'], '', 'Ajmer lead untouched');
+    assert(api('bulkEdit', { filter: {}, field: 'Category', value: 'Dealer' }).error, 'empty filter refused');
+    assert(api('bulkEdit', { filter: { city: 'x' }, field: 'Phone', value: '1' }).error, 'Phone cannot be bulk edited');
+    assert(api('deleteLead', { phone: '9811100003' }).error, 'delete needs confirm');
+    assert.strictEqual(api('deleteLead', { phone: '9811100003', confirm: true }).message, 'Deleted');
+    assert.strictEqual(api('lead', { phone: '9811100003' }).error, 'Lead not found');
+    const imp = api('importLeads', { rows: [
+      { phone: '9811100001', name: 'Dup' }, { phone: '+91 98111 00004', name: 'New', city: 'Kota', category: 'Builder' }, { phone: '123', name: 'Bad' }] });
+    assert.deepStrictEqual([imp.added, imp.skipped, imp.invalid], [1, 1, 1]);
+    assert.strictEqual(api('lead', { phone: '9811100004' }).lead['Category'], 'Builder');
+  },
   'app: data check finds duplicates and fixes phone numbers'() {
     const env = load(BASE);
     const api = (a, x) => JSON.parse(env.ctx.api(env.props.APP_PIN, a, JSON.stringify(x || {})));
