@@ -234,6 +234,30 @@ const tests = {
     for (let i = 0; i < 10; i++) env.ctx.api('nope', 'dashboard', '{}');
     assert(JSON.parse(env.ctx.api(env.props.APP_PIN, 'dashboard', '{}')).error.includes('Too many'));
   },
+  'app: data check finds duplicates and fixes phone numbers'() {
+    const env = load(BASE);
+    const api = (a, x) => JSON.parse(env.ctx.api(env.props.APP_PIN, a, JSON.stringify(x || {})));
+    const sh = env.sheets['Leads'];
+    const col = name => sh.rows[0].indexOf(name);
+    const addRow = (phone, fields) => {
+      const r = sh.rows[0].map(() => '');
+      r[col('Phone')] = phone;
+      Object.entries(fields).forEach(([k, v]) => { r[col(k)] = v; });
+      sh.appendRow(r);
+    };
+    addRow('919811110001', { Name: 'Ramesh', City: 'Jaipur' });
+    addRow('919811110001', { Name: 'Ramesh copy', City: 'Jaipur' });
+    addRow('9811122223', { Name: 'Suresh' });
+    addRow('123', { Name: 'Bad' });
+    const c = api('cleanCheck');
+    assert.strictEqual(c.checked, 4);
+    assert.strictEqual(c.duplicateCount, 1);
+    assert.strictEqual(c.fixableCount, 1);
+    assert.strictEqual(c.badPhoneCount, 1);
+    assert.strictEqual(api('cleanFix').fixed, 1);
+    assert.strictEqual(String(sh.rows[3][col('Phone')]), '919811122223');
+    assert.strictEqual(api('cleanCheck').fixableCount, 0);
+  },
   'app: dashboard, search, lead detail, actions, reply, settings'() {
     const env = load(Object.assign({}, BASE, { claude: [
       tool('handoff_to_sales', { reason: 'price', summary: 'Applicator Jaipur 2000 sqft', priority: 'hot' }), say('Ji 🙏 team call karegi')] }));

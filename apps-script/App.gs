@@ -79,7 +79,57 @@ function card_(l, now) {
            note: String(l['Follow-up Note'] || l['Requirement'] || ''), lastIn: iso_(l['Last Inbound']) };
 }
 
+function cleanRows_() {
+  var sh = sheet_(SHEETS.leads);
+  if (sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, LEAD_COLS.length).getValues().map(function (r, i) {
+    var l = {}; LEAD_COLS.forEach(function (c, j) { l[c] = r[j]; });
+    return { row: i + 2, lead: l };
+  }).filter(function (x) { return x.lead['Phone']; });
+}
+function validPhone_(p) { return /^91\d{10}$/.test(String(p)); }
+
+function cleanReport_(rows) {
+  var seen = {}, dupes = [], fixable = [], bad = [], noCity = 0, noBusiness = 0;
+  rows.forEach(function (x) {
+    var l = x.lead, p = String(l['Phone']);
+    var card = { row: x.row, phone: p, name: l['Name'] || l['Business'] || '', city: l['City'] || '', note: '' };
+    if (seen[p]) {
+      dupes.push(Object.assign({}, card, { note: 'Same number as row ' + seen[p] + ', merge by hand' }));
+    } else {
+      seen[p] = x.row;
+    }
+    if (!validPhone_(p)) {
+      var norm = normPhone_(p);
+      if (validPhone_(norm)) fixable.push(Object.assign({}, card, { note: 'Will become ' + norm }));
+      else bad.push(Object.assign({}, card, { note: 'Not a valid Indian mobile number' }));
+    }
+    if (!l['City']) noCity++;
+    if (!l['Business'] && !l['Name']) noBusiness++;
+  });
+  return {
+    checked: rows.length,
+    duplicates: dupes.slice(0, 100), duplicateCount: dupes.length,
+    fixable: fixable.slice(0, 100), fixableCount: fixable.length,
+    badPhones: bad.slice(0, 100), badPhoneCount: bad.length,
+    noCity: noCity, noBusiness: noBusiness
+  };
+}
+
 var APP_ACTIONS = {
+  cleanCheck: function () { return cleanReport_(cleanRows_()); },
+  cleanFix: function () {
+    var rows = cleanRows_(), taken = {}, sh = sheet_(SHEETS.leads), col = LEAD_COLS.indexOf('Phone') + 1, fixed = 0;
+    rows.forEach(function (x) { taken[String(x.lead['Phone'])] = true; });
+    rows.forEach(function (x) {
+      var p = String(x.lead['Phone']), norm = normPhone_(p);
+      if (validPhone_(p) || !validPhone_(norm) || taken[norm]) return;
+      sh.getRange(x.row, col).setValue(norm);
+      taken[norm] = true;
+      fixed++;
+    });
+    return { fixed: fixed };
+  },
   dashboard: function () {
     var now = new Date();
     var leads = allLeads_();

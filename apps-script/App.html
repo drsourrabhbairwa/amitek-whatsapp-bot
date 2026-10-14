@@ -308,14 +308,14 @@ function setHeader(title, back) {
   $('title').textContent = title; $('backBtn').classList.toggle('hidden', !back);
   document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === S.tab); });
 }
-function showTab(tab) { S.tab = tab; S.lead = null; S.camp = null; S.stack = []; render(); window.scrollTo(0, 0); }
-function goBack() { S.lead = null; S.camp = null; render(); }
+function showTab(tab) { S.tab = tab; S.lead = null; S.camp = null; S.clean = false; S.stack = []; render(); window.scrollTo(0, 0); }
+function goBack() { S.lead = null; S.camp = null; S.clean = false; render(); }
 function refresh() { if (S.lead) openLead(S.lead.card.phone, true); else render(); }
 function loading() { $('main').innerHTML = '<div class="loading">Loading…</div>'; }
 
 function render() {
   if (S.tab === 'today') return renderToday();
-  if (S.tab === 'leads') return renderLeads();
+  if (S.tab === 'leads') return S.clean ? renderClean() : renderLeads();
   if (S.tab === 'add') return renderAdd();
   if (S.tab === 'settings') return renderSettings();
   if (S.tab === 'send') return S.camp ? renderCampForm() : renderCampaigns();
@@ -373,12 +373,42 @@ function renderLeads() {
   $('main').innerHTML = '<div class="search"><input id="q" type="text" placeholder="Search name, number, city…" value="' + esc(S.q) + '"></div>' +
     '<div class="chips">' + STATUSES.map(function (s) {
       return '<button class="chip' + (S.status === s ? ' on' : '') + '" onclick="setStatus(\'' + s + '\')">' + (s || 'All') + '</button>';
-    }).join('') + '</div><div id="results"><div class="loading">Loading…</div></div>';
+    }).join('') + '</div><div style="margin:0 2px 8px"><button class="btn soft" style="width:100%" onclick="openClean()">🧹 Check lead data</button></div>' +
+    '<div id="results"><div class="loading">Loading…</div></div>';
   var q = $('q');
   q.addEventListener('input', function () { clearTimeout(renderLeads.h); renderLeads.h = setTimeout(function () { S.q = q.value; search(); }, 350); });
   search();
 }
 function setStatus(s) { S.status = s; renderLeads(); }
+
+// ---------------------------------------------------------------- Check lead data
+function openClean() { S.clean = true; render(); window.scrollTo(0, 0); }
+function renderClean() {
+  setHeader('Check lead data', true); loading();
+  call('cleanCheck').then(function (r) {
+    if (!S.clean) return;
+    var item = function (x) {
+      return '<div class="card" style="margin:6px 0;padding:10px"><b>' + esc(x.name || 'No name') + '</b><div class="info">' +
+        esc(x.phone) + (x.city ? ' · ' + esc(x.city) : '') + '</div><div class="info">' + esc(x.note) + '</div></div>';
+    };
+    var block = function (title, count, rows, empty, extra) {
+      return '<h2>' + title + ' (' + count + ')</h2>' + (count ? (extra || '') + rows.map(item).join('') +
+        (count > rows.length ? '<div class="info">Showing ' + rows.length + ' of ' + count + '</div>' : '') : '<div class="info">' + empty + '</div>');
+    };
+    $('main').innerHTML = '<div class="info" style="margin:0 2px 8px">' + r.checked + ' leads checked. ' + r.noCity + ' without a city, ' +
+      r.noBusiness + ' without a business name. Nothing is deleted here.</div>' +
+      block('Phone numbers to fix', r.fixableCount, r.fixable, 'All numbers look right',
+        r.fixableCount ? '<button class="btn green" style="width:100%;margin:6px 0" onclick="fixPhones()">Fix ' + r.fixableCount + ' phone numbers</button>' : '') +
+      block('Duplicate numbers', r.duplicateCount, r.duplicates, 'No duplicate numbers') +
+      block('Numbers that cannot be fixed', r.badPhoneCount, r.badPhones, 'None');
+  }).catch(fail);
+}
+function fixPhones() {
+  call('cleanFix').then(function (r) {
+    toast('Fixed ' + r.fixed + ' phone numbers');
+    renderClean();
+  }).catch(fail);
+}
 function search() {
   var q = S.q, st = S.status;
   call('search', { q: q, status: st }).then(function (r) {
