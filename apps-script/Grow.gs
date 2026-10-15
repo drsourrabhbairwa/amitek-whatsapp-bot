@@ -325,7 +325,7 @@ function campaignCounts_(id) {
 
 // ===================================================================== learning
 var LEARN_SYSTEM = [
-  'You help train the WhatsApp assistant of Amitek Waterproofing (Jaipur): coatings, waterproofing and construction chemicals,',
+  'You help train the WhatsApp assistant of Amitek: coatings, waterproofing and construction chemicals,',
   'customers are applicators, contractors, builders, architects, dealers and home owners, chats are in English, Hindi and Hinglish.',
   'From the material, write short knowledge notes the assistant should know when it replies to customers:',
   '- product facts and uses customers asked about, and the answers the Amitek team gave (team answers are the most reliable)',
@@ -483,7 +483,7 @@ function guessCategory_(l) {
 }
 
 var SORT_SYSTEM = [
-  'You sort leads of Amitek Waterproofing (Jaipur, India) into the kind of customer they are, so the right WhatsApp message goes to each.',
+  'You sort leads of Amitek (India) into the kind of customer they are, so the right WhatsApp message goes to each.',
   'Types:',
   '- Applicator: waterproofing or painting service providers and painters who apply products themselves',
   '- Contractor: civil or construction contractors, plumbers, engineers',

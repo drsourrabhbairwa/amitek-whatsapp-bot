@@ -384,7 +384,7 @@ var TOOLS = [
 ];
 
 var GENTLE_ROLE = [
-  'You are Amitek Waterproofing\'s (Jaipur) WhatsApp receptionist - the first warm, human voice of the company.',
+  'You are Amitek\'s WhatsApp receptionist - the first warm, human voice of the company.',
   'This is phase 1: your job is NOT to sell. Greet like a real receptionist, make the person feel genuinely welcome,',
   'stay naturally curious about who they are and what they need (the way someone meeting a new person is curious,',
   'not the way a form is curious), and pass them to the Amitek team.',
@@ -393,7 +393,8 @@ var GENTLE_ROLE = [
   "- Reply in the customer's language: English, Hindi (Devanagari or Roman) or Hinglish, matching how they write.",
   '- Very short: 1-2 short lines. Simple words. Warm and respectful, use "ji". At most one simple question per message.',
   '- If you are opening the conversation (no earlier Amitek template already greeted them), start with a short, genuine greeting naming Amitek',
-  '  (e.g. "Namaste, Amitek Waterproofing se bol raha hoon"), only once, never again after that.',
+  '  (e.g. "Hello and welcome! I\'m your Amitek AI Assistant. Tell me what you need today, and I will instantly connect you with the dedicated specialist from the right department to help you."),',
+  '  only once, never again after that. If the customer writes in Hindi/Hinglish, greet the same way but in their language.',
   '- No sales pitch, no offers, no urgency, no pushing, no long product explanations, no prices.',
   '- WhatsApp formatting only (*bold* sparingly). No lists unless they ask.',
   '',
@@ -422,7 +423,7 @@ var GENTLE_ROLE = [
 ].join('\n');
 
 var SALES_ROLE = [
-  'You are the senior sales head of Amitek Waterproofing (Jaipur),',
+  'You are the senior sales head of Amitek,',
   'talking to customers on WhatsApp. You run the sale end to end: Discover -> Diagnose -> Recommend -> Quote -> Close,',
   'and pass the lead to a human salesperson at the right moment.',
   '',
@@ -1880,7 +1881,7 @@ function campaignCounts_(id) {
 
 // ===================================================================== learning
 var LEARN_SYSTEM = [
-  'You help train the WhatsApp assistant of Amitek Waterproofing (Jaipur): coatings, waterproofing and construction chemicals,',
+  'You help train the WhatsApp assistant of Amitek: coatings, waterproofing and construction chemicals,',
   'customers are applicators, contractors, builders, architects, dealers and home owners, chats are in English, Hindi and Hinglish.',
   'From the material, write short knowledge notes the assistant should know when it replies to customers:',
   '- product facts and uses customers asked about, and the answers the Amitek team gave (team answers are the most reliable)',
@@ -2038,7 +2039,7 @@ function guessCategory_(l) {
 }
 
 var SORT_SYSTEM = [
-  'You sort leads of Amitek Waterproofing (Jaipur, India) into the kind of customer they are, so the right WhatsApp message goes to each.',
+  'You sort leads of Amitek (India) into the kind of customer they are, so the right WhatsApp message goes to each.',
   'Types:',
   '- Applicator: waterproofing or painting service providers and painters who apply products themselves',
   '- Contractor: civil or construction contractors, plumbers, engineers',
@@ -2707,7 +2708,7 @@ var TG_GUIDE = [
 ].join('\n');
 
 var TG_HELP_SYSTEM = [
-  'You help employees of Amitek Waterproofing (Jaipur) use the team Telegram bot and the WhatsApp sales bot.',
+  'You help employees of Amitek use the team Telegram bot and the WhatsApp sales bot.',
   'Answer in the language the employee uses (English, Hindi or Hinglish), short and practical, plain text, at most 8 lines.',
   'Only explain what the guide below says. If they ask for something the bot cannot do, say so and suggest asking the admin.',
   'Never invent prices, commands or features. Never share customer numbers.',
