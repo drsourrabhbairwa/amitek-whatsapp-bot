@@ -498,6 +498,14 @@ const tests = {
     assert.deepStrictEqual(r.nav, { tab: 'leads' });
     r = api('assistant', { text: 'add a new lead' });
     assert.deepStrictEqual(r.nav, { tab: 'add' });
+    // free-form chat (not a command, not a campaign plan) gets a real AI reply grounded in the lead snapshot, not "Command not understood"
+    env.claude.push(say('You have 1 hot lead right now: Vikas in Jaipur. Want me to open it?'));
+    r = api('assistant', { text: 'how many hot leads do I have today' });
+    assert.strictEqual(r.reply, 'You have 1 hot lead right now: Vikas in Jaipur. Want me to open it?');
+    assert.strictEqual(r.nav, null);
+    const sentSys = env.claudeCalls[env.claudeCalls.length - 1].body.system[0].text;
+    assert(sentSys.includes('ops assistant'), sentSys);
+    assert(sentSys.includes('Amitek leads'), 'grounded in the real lead snapshot');
   },
   'campaign pauses itself when WhatsApp refuses the template'() {
     const env = load(BASE);
