@@ -898,7 +898,7 @@ function saveLimit() { call('campaignLimit', { limit: $('limitIn').value, from: 
 
 function editCamp(id) {
   var c = id ? S.campData.campaigns.filter(function (x) { return x.id === id; })[0] : null;
-  S.camp = c ? JSON.parse(JSON.stringify(c)) : { id: '', name: '', template: '', language: 'hi', usesName: false, text: '', startAt: '',
+  S.camp = c ? JSON.parse(JSON.stringify(c)) : { id: '', name: '', template: '', language: 'hi', usesName: false, templateVars: '', text: '', startAt: '',
            filter: { categories: [], states: [], cities: [], newOnly: true, canMessageOnly: true, limit: 0, keepOn: false } };
   render(); window.scrollTo(0, 0);
 }
@@ -924,8 +924,13 @@ function renderCampForm() {
     '<label>Template name, exactly as approved in BlueTick</label><input id="c_tpl" type="text" autocapitalize="off" value="' + esc(c.template === 'auto' ? '' : c.template) + '" placeholder="e.g. amitek_intro_hi">' +
     '<label>Template language</label><select id="c_lang">' + LANGS.map(function (l) {
       return '<option value="' + l[0] + '"' + (l[0] === c.language ? ' selected' : '') + '>' + l[1] + ' (' + l[0] + ')</option>'; }).join('') + '</select>' +
-    '<label class="check"><input id="c_name1" type="checkbox"' + (c.usesName ? ' checked' : '') + '><span>The template has {{1}} for the customer\'s name' +
-    '<small>The first name (or business name, or "ji") is filled in.</small></span></label></div>' +
+    '<label class="check"><input id="c_name1" type="checkbox"' + (c.usesName && !c.templateVars ? ' checked' : '') + ' onchange="$(\'c_varsbox\').style.display=this.checked?\'none\':\'block\'"><span>The template has just {{1}} for the customer\'s name' +
+    '<small>The first name (or business name, or "ji") is filled in.</small></span></label>' +
+    '<div id="c_varsbox" style="display:' + (c.usesName && !c.templateVars ? 'none' : 'block') + '">' +
+    '<label>Or: fill in each variable, in order ({{1}}, {{2}}, …), comma separated</label>' +
+    '<input id="c_vars" type="text" value="' + esc(c.templateVars || '') + '" placeholder="{Name}, Waterproofing, {City}">' +
+    '<small style="display:block;margin-top:-6px;color:var(--muted,#888)">Use {Name}, {City}, {Category}, {Business} to pull from the lead, or type plain text for a fixed value. Works with any approved BlueTick template.</small>' +
+    '</div></div>' +
     '<label>Template text (copy it from BlueTick, so the chat history shows what was sent)</label>' +
     '<textarea id="c_text" rows="4" placeholder="Namaste {{1}} ji, Amitek Waterproofing se…">' + esc(c.text) + '</textarea></div>' +
     '<h2>Who gets it</h2><div class="card form">' +
@@ -954,7 +959,7 @@ function localInput(iso) {
 function readCamp() {
   var c = S.camp, f = c.filter;
   c.name = $('c_name').value.trim(); c.template = $('c_auto').checked ? 'auto' : $('c_tpl').value.trim(); c.language = $('c_lang').value;
-  c.usesName = $('c_name1').checked; c.text = $('c_text').value.trim();
+  c.usesName = $('c_name1').checked; c.templateVars = c.usesName ? '' : ($('c_vars') ? $('c_vars').value.trim() : ''); c.text = $('c_text').value.trim();
   c.startAt = $('c_start').value ? new Date($('c_start').value).toISOString() : '';
   f.cities = $('c_cities').value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
   f.limit = parseInt($('c_limit').value, 10) || 0; f.newOnly = $('c_new').checked; f.canMessageOnly = $('c_can').checked; f.keepOn = $('c_keep').checked;
@@ -976,7 +981,7 @@ function preview() {
 }
 function saveCamp(btn) {
   var c = readCamp(); btn.disabled = true;
-  call('campaignSave', { id: c.id, name: c.name, template: c.template, language: c.language, usesName: c.usesName, text: c.text, filter: c.filter, startAt: c.startAt })
+  call('campaignSave', { id: c.id, name: c.name, template: c.template, language: c.language, usesName: c.usesName, templateVars: c.templateVars, text: c.text, filter: c.filter, startAt: c.startAt })
     .then(function (r) { toast(r.message + '. Tap "Test to me" first.'); S.camp = null; render(); })
     .catch(function (e) { btn.disabled = false; fail(e); });
 }

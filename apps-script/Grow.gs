@@ -11,7 +11,7 @@
  */
 
 var CAMPAIGN_COLS = ['ID', 'Name', 'Template', 'Language', 'Uses Name', 'Message Text', 'Filter', 'Status', 'Created',
-                     'Started', 'Finished', 'Total', 'Sent', 'Failed', 'Last Error', 'Start At'];
+                     'Started', 'Finished', 'Total', 'Sent', 'Failed', 'Last Error', 'Start At', 'Template Vars'];
 var CAMPAIGN_LOG_COLS = ['Time', 'Campaign ID', 'Phone', 'Result', 'Detail'];
 var LEARN_COLS = ['Time', 'Source', 'Title', 'Content', 'Why', 'Status'];
 var SORT_COLS = ['Time', 'Phone', 'Lead', 'Business Type', 'Suggested', 'Why', 'Status'];
@@ -116,12 +116,35 @@ function firstName_(l) {
   return n ? n.split(/\s+/)[0].slice(0, 30) : 'ji';
 }
 
+// A "Template Vars" value fills a template's body variables in order, e.g. "{Name}, Waterproofing, {City}".
+// {Field} pulls that column from the lead (Name, City, Category, Business, ...); anything else is sent as literal text.
+function resolveTemplateToken_(tok, l) {
+  tok = String(tok);
+  var m = /^\{([^}]+)\}$/.exec(tok.trim());
+  if (!m) return tok.trim();
+  var field = m[1].trim();
+  if (/^name$/i.test(field)) return firstName_(l);
+  var v = l[field];
+  return v === undefined || v === null ? '' : String(v);
+}
+
+function templateVarsList_(c) {
+  var raw = String(c['Template Vars'] || '').trim();
+  if (!raw) return null;
+  return raw.split(',');
+}
+
 function templateBody_(c, l) {
   var auto = String(c['Template']).trim() === 'auto';  // template and language come from the lead's category
   var pb = auto ? (playbook_()[String(l['Category'] || '')] || {}) : null;
   var t = { name: auto ? String(pb.template || '') : String(c['Template']).trim(),
             language: { code: auto ? String(pb.language || 'hi') : String(c['Language'] || 'en').trim() } };
-  if (auto || isOn_(c['Uses Name'])) t.components = [{ type: 'body', parameters: [{ type: 'text', text: firstName_(l) }] }];
+  var vars = auto ? null : templateVarsList_(c);
+  if (vars && vars.length) {
+    t.components = [{ type: 'body', parameters: vars.map(function (tok) { return { type: 'text', text: resolveTemplateToken_(tok, l) }; }) }];
+  } else if (auto || isOn_(c['Uses Name'])) {
+    t.components = [{ type: 'body', parameters: [{ type: 'text', text: firstName_(l) }] }];
+  }
   return { messaging_product: 'whatsapp', recipient_type: 'individual', to: String(l['Phone']), type: 'template', template: t };
 }
 
@@ -821,7 +844,7 @@ var GROW_ACTIONS = {
       campaigns: rowsAsObjects_(campaignsSheet_(), CAMPAIGN_COLS).reverse().map(function (c) {
         var k = campaignCounts_(c['ID']);
         return { id: String(c['ID']), name: String(c['Name']), template: String(c['Template']), language: String(c['Language']),
-                 usesName: isOn_(c['Uses Name']), text: String(c['Message Text']), filter: JSON.parse(c['Filter'] || '{}'),
+                 usesName: isOn_(c['Uses Name']), templateVars: String(c['Template Vars'] || ''), text: String(c['Message Text']), filter: JSON.parse(c['Filter'] || '{}'),
                  status: String(c['Status']), total: Number(c['Total']) || 0, sent: k.sent, failed: k.failed, replied: k.replied,
                  optedOut: k.optedOut, error: String(c['Last Error'] || ''), created: iso_(c['Created']),
                  startAt: asDate_(c['Start At']) ? iso_(c['Start At']) : '' };
@@ -927,8 +950,9 @@ var GROW_ACTIONS = {
     var startAt = a.startAt ? new Date(a.startAt) : '';
     if (startAt && isNaN(startAt.getTime())) return { error: 'Check the start date and time' };
     var fields = { 'Name': name, 'Template': template, 'Language': lang, 'Uses Name': a.usesName ? 'true' : 'false',
-                   'Message Text': String(a.text || '').slice(0, 1024), 'Filter': filter, 'Start At': startAt };
-    if (template === 'auto') fields['Uses Name'] = 'true';
+                   'Message Text': String(a.text || '').slice(0, 1024), 'Filter': filter, 'Start At': startAt,
+                   'Template Vars': String(a.templateVars || '').slice(0, 500) };
+    if (template === 'auto') { fields['Uses Name'] = 'true'; fields['Template Vars'] = ''; }
     if (a.id) {
       var c = getCampaign_(a.id);
       if (!c) return { error: 'Campaign not found' };
