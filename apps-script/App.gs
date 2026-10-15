@@ -308,6 +308,17 @@ var APP_ACTIONS = {
     return { message: 'Sent' };
   },
 
+  // One chat box for the whole team: type anything a WhatsApp command or campaign-chat line would say
+  // (DONE/LATER/WON/LOST/LIST/HELP, "applicators ko monday 11 baje message bhejo", CAMPAIGNS), or ask to open
+  // a screen ("show board", "open leads", "add a lead", "settings") and the app navigates there for you.
+  assistant: function (a) {
+    var text = String(a.text || '').trim();
+    if (!text) return { error: 'Type something' };
+    var nav = assistantNav_(text);
+    var reply = salesCommand_(text, setting_('SALES_WHATSAPP'));
+    return { reply: String(reply || 'Done.'), nav: nav };
+  },
+
   pause: function (a) {
     var phone = normPhone_(a.phone);
     if (!getLead_(phone)) return { error: 'Lead not found' };
@@ -461,6 +472,21 @@ function writeSettings_(s) {
     logChange_('', 'app', 'Setting ' + k + ' -> ' + s[k]);
   });
   settingsCache_ = null;
+}
+
+/** Reads an "open ___" / "show ___" style ask out of an assistant chat line, so the app can switch screens itself.
+ * Never fires for a real command word (HELP/LIST/DONE/...) - those get their answer typed back in the chat instead. */
+function assistantNav_(text) {
+  var first = String(text).trim().split(/\s+/)[0] || '';
+  if (['HELP', '?', 'LIST', 'PENDING', 'DONE', 'LATER', 'WON', 'LOST', 'CAMPAIGNS'].indexOf(first.toUpperCase()) >= 0) return null;
+  var t = String(text).toLowerCase();
+  if (/\b(board|dashboard|today|overdue|hot leads)\b/.test(t)) return { tab: 'today' };
+  if (/\b(add|new)\b.*\blead\b/.test(t)) return { tab: 'add' };
+  if (/\bsettings\b/.test(t)) return { tab: 'settings' };
+  if (/\blearn\b|\bknowledge\b/.test(t)) return { tab: 'learn' };
+  if (/\bcampaigns?\b|\bsend\b/.test(t) && !/\bbhejo\b|\bmessage\b/.test(t)) return { tab: 'send' };
+  if (/\bleads?\b|\bsearch\b/.test(t)) return { tab: 'leads' };
+  return null;
 }
 
 /** HTTP version of api() for the Android app: POST {"_app":1,"pin":..,"action":..,"args":{..}} as text/plain. */
