@@ -468,6 +468,19 @@ const tests = {
     post(env, payload([text('919811110002', 'haan batao')]));
     assert.strictEqual(api('campaigns').campaigns[0].replied, 1);
   },
+  'any template can be sent, with any of its variables filled from the lead'() {
+    const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES } }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    const sh = env.sheets['Leads'];
+    const row = (phone, f) => { const h = sh.rows[0]; sh.rows.push(h.map(c => c === 'Phone' ? phone : (f[c] !== undefined ? f[c] : (c === 'Status' ? 'New' : ''))));};
+    row('919811110011', { Name: 'Priya Singh', City: 'Jaipur', Category: 'Dealer' });
+    const id = api('campaignSave', { name: 'Dealer offer', template: 'amitek_dealer_offer', language: 'en',
+                                     templateVars: '{Name}, Waterproofing, {City}', filter: { cities: 'jaipur' } }).id;
+    assert(api('campaignStart', { id }).message.includes('1 sent'));
+    const t = env.sent.pop().body;
+    assert.strictEqual(t.template.name, 'amitek_dealer_offer');
+    assert.deepStrictEqual(t.template.components[0].parameters.map(p => p.text), ['Priya', 'Waterproofing', 'Jaipur']);
+  },
   'campaign pauses itself when WhatsApp refuses the template'() {
     const env = load(BASE);
     const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
