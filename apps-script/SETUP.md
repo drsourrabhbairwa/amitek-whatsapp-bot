@@ -127,3 +127,7 @@ The Google Sheet is the database: **Leads**, **Messages**, **Log** (every change
 Source files are `Code.gs`, `App.gs` and `App.html`; `node apps-script/build.js` makes `dist/Amitek_Bot.gs`.
 Tests: `node apps-script/test/test.js` (and `DIST=1` for the built file). The Android app is in `android/`
 and is built by GitHub Actions on every push.
+
+## Website version of the app
+
+The same app page is also published as a static site in `docs/` (built from `apps-script/App.html` by `node apps-script/build.js`). Open it in a desktop browser, paste your Apps Script Web app link once, and enter the app PIN. The data stays in your Google Sheet; the site holds no lead data and no keys. Host it with GitHub Pages (repository Settings > Pages > deploy from the `docs` folder on the branch), or open `docs/index.html` directly.

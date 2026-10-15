@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b5cab">
+<title>Amitek Leads</title>
+<style>
+  :root {
+    --bg: #f3f5f8; --card: #ffffff; --text: #16202c; --muted: #637083; --line: #e3e7ee;
+    --brand: #0b5cab; --brand-soft: #e5effa; --hot: #d93a2b; --hot-soft: #fde8e6; --due: #b26a00; --due-soft: #fff1d6;
+    --wait: #1d63c9; --wait-soft: #e3edfc; --ok: #13804b; --ok-soft: #dff3e8; --grey-soft: #eef0f3;
+    --head: #0b5cab; --in: #ffffff; --out: #dcf3e3; --outbot: #e7eefb; --shadow: 0 1px 2px rgba(16, 24, 40, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f141b; --card: #18202a; --text: #e7ecf2; --muted: #93a0b2; --line: #273241;
+      --brand: #5aa2ee; --brand-soft: #16304d; --hot: #ff7a6b; --hot-soft: #3d1d1a; --due: #f0b450; --due-soft: #3a2c12;
+      --wait: #78a9f3; --wait-soft: #172a47; --ok: #4fcf8b; --ok-soft: #13301f; --grey-soft: #222b36;
+      --head: #123a63; --in: #1e2833; --out: #1a3a27; --outbot: #1b2a42; --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  .hidden { display: none !important; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--head); color: #fff; padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px; min-height: 54px; }
+  header h1 { font-size: 17px; margin: 0; flex: 1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; background: rgba(255,255,255,.2); }
+  .pill.live { background: #13804b; }
+  .pill.test { background: #b26a00; }
+  header button { background: rgba(255,255,255,.15); border: 0; color: #fff; border-radius: 10px; height: 34px; min-width: 34px;
+    padding: 0 10px; cursor: pointer; }
+  main { padding: 12px 16px 96px; max-width: 720px; margin: 0 auto; }
+  @media (min-width: 900px) { main { max-width: 1080px; } .sheet { max-width: 720px; } }
+  nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--line);
+    display: flex; padding-bottom: env(safe-area-inset-bottom); z-index: 6; }
+  nav button { flex: 1; border: 0; background: none; padding: 9px 0 10px; color: var(--muted); font-size: 11px; cursor: pointer; min-width: 0; }
+  nav button .i { display: block; font-size: 20px; line-height: 24px; }
+  nav button.on { color: var(--brand); font-weight: 600; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  .tile { background: var(--card); border-radius: 12px; padding: 10px 8px; text-align: center; box-shadow: var(--shadow);
+    border: 1px solid var(--line); cursor: pointer; }
+  .tile b { display: block; font-size: 22px; line-height: 1.1; }
+  .tile span { font-size: 11px; color: var(--muted); }
+  .tile.hot b { color: var(--hot); } .tile.due b { color: var(--due); } .tile.wait b { color: var(--wait); }
+  .botbar { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 12px; margin-bottom: 14px; font-size: 13px; cursor: pointer; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 18px 2px 8px; font-weight: 600; }
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .lead { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; box-shadow: var(--shadow);
+    cursor: pointer; display: flex; gap: 10px; align-items: flex-start; }
+  .lead .main { flex: 1; min-width: 0; }
+  .lead .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lead .sub { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lead .note { font-size: 13px; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .badge { font-size: 11px; font-weight: 600; border-radius: 20px; padding: 2px 8px; white-space: nowrap; background: var(--grey-soft); color: var(--muted); }
+  .b-Hot { background: var(--hot-soft); color: var(--hot); }
+  .b-Overdue { background: var(--due-soft); color: var(--due); }
+  .b-Waiting { background: var(--wait-soft); color: var(--wait); }
+  .b-Won { background: var(--ok-soft); color: var(--ok); }
+  .when { font-size: 12px; color: var(--muted); text-align: right; margin-top: 4px; white-space: nowrap; }
+  .empty { color: var(--muted); text-align: center; padding: 18px 8px; background: var(--card); border-radius: 12px; border: 1px dashed var(--line); font-size: 14px; }
+  .search { display: flex; gap: 8px; margin-bottom: 10px; }
+  input[type=text], input[type=tel], input[type=password], input[type=number], input[type=datetime-local], select, textarea {
+    width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); outline: none; }
+  input:focus, select:focus, textarea:focus { border-color: var(--brand); }
+  .chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; scrollbar-width: none; }
+  .chip { border: 1px solid var(--line); background: var(--card); border-radius: 20px; padding: 6px 12px; white-space: nowrap; cursor: pointer; font-size: 13px; }
+  .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .btn { border: 0; border-radius: 10px; padding: 11px 14px; background: var(--brand); color: #fff; font-weight: 600; cursor: pointer; }
+  .btn.soft { background: var(--brand-soft); color: var(--brand); }
+  .btn.ghost { background: var(--card); color: var(--text); border: 1px solid var(--line); }
+  .btn.red { background: var(--hot-soft); color: var(--hot); }
+  .btn.green { background: var(--ok-soft); color: var(--ok); }
+  .btn:disabled { opacity: .5; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; box-shadow: var(--shadow); }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+  .quick a, .quick button { text-decoration: none; text-align: center; font-size: 13px; padding: 10px 4px; }
+  .acts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 4px; }
+  .acts button { padding: 10px 2px; font-size: 13px; }
+  .info { font-size: 13px; color: var(--muted); }
+  .info b { color: var(--text); font-weight: 600; }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); margin: 14px 0 10px; }
+  .tabs button { flex: 1; border: 0; background: none; padding: 10px; color: var(--muted); border-bottom: 2px solid transparent; cursor: pointer; }
+  .tabs button.on { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600; }
+  .chat { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; }
+  .msg { max-width: 84%; padding: 7px 10px 5px; border-radius: 12px; background: var(--in); border: 1px solid var(--line); white-space: pre-wrap; word-wrap: break-word; }
+  .msg.out { align-self: flex-end; background: var(--out); border-color: transparent; }
+  .msg.bot { background: var(--outbot); }
+  .msg .meta { font-size: 11px; color: var(--muted); text-align: right; margin-top: 2px; }
+  .replybar { position: sticky; bottom: 70px; display: flex; gap: 8px; background: var(--bg); padding: 8px 0; }
+  .replybar textarea { min-height: 44px; max-height: 120px; resize: none; }
+  .notice { font-size: 13px; padding: 10px 12px; border-radius: 10px; background: var(--due-soft); color: var(--due); margin: 6px 0; }
+  .form label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  .switch { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--line); gap: 12px; }
+  .switch:last-child { border-bottom: 0; }
+  .switch small { display: block; color: var(--muted); font-size: 12px; }
+  .tog { position: relative; width: 48px; height: 28px; flex: none; }
+  .tog input { opacity: 0; width: 0; height: 0; }
+  .tog span { position: absolute; inset: 0; background: var(--line); border-radius: 28px; transition: .2s; cursor: pointer; }
+  .tog span:before { content: ""; position: absolute; width: 22px; height: 22px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  .tog input:checked + span { background: var(--ok); }
+  .tog input:checked + span:before { transform: translateX(20px); }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { flex: 1; border: 0; padding: 9px; background: var(--card); cursor: pointer; }
+  .seg button.on { background: var(--brand); color: #fff; }
+  .log { font-size: 13px; border-bottom: 1px solid var(--line); padding: 8px 0; }
+  .log .t { color: var(--muted); font-size: 12px; }
+  #toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: #16202c; color: #fff; padding: 10px 16px;
+    border-radius: 10px; font-size: 14px; z-index: 20; max-width: calc(100% - 32px); box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+  #toast.err { background: #b3261e; }
+  .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 15; display: flex; align-items: flex-end; }
+  .sheet { background: var(--card); width: 100%; max-width: 720px; margin: 0 auto; border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .sheet h3 { margin: 0 0 10px; font-size: 16px; }
+  .pin { max-width: 320px; margin: 18vh auto 0; text-align: center; padding: 0 16px; }
+  .pin .logo { width: 60px; height: 60px; border-radius: 16px; background: var(--brand); color: #fff; display: grid; place-items: center;
+    font-size: 28px; font-weight: 700; margin: 0 auto 14px; }
+  .pin input { text-align: center; font-size: 22px; letter-spacing: .3em; margin: 16px 0 10px; }
+  .pin input::placeholder { letter-spacing: normal; font-size: 15px; }
+  .step { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; font-size: 14px; }
+  .step small { display: block; color: var(--muted); font-size: 12px; }
+  .ck { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line); flex: none; display: grid; place-items: center;
+    font-size: 12px; font-weight: 700; color: #fff; margin-top: 1px; }
+  .ck.ok { background: var(--ok); border-color: var(--ok); }
+  .hook { font: 12px/1.4 ui-monospace, Menlo, monospace; background: var(--grey-soft); border-radius: 8px; padding: 10px; word-break: break-all; user-select: all; }
+  .loading { text-align: center; color: var(--muted); padding: 30px 0; }
+  .camp { margin-bottom: 10px; }
+  .camp .top { display: flex; gap: 8px; align-items: flex-start; }
+  .camp .top b { flex: 1; min-width: 0; }
+  .bar { height: 6px; background: var(--grey-soft); border-radius: 6px; overflow: hidden; margin: 8px 0 6px; }
+  .bar i { display: block; height: 100%; background: var(--ok); }
+  .b-Running { background: var(--ok-soft); color: var(--ok); }
+  .b-Paused { background: var(--due-soft); color: var(--due); }
+  .camp .b-Scheduled { background: var(--wait-soft); color: var(--wait); }
+  .plan { white-space: pre-wrap; font-size: 14px; line-height: 1.45; }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; margin: 10px 0 0; }
+  .check input { width: 18px; height: 18px; margin: 2px 0 0; flex: none; }
+  .form label.check { display: flex; font-size: 14px; color: var(--text); margin: 12px 0 0; }
+  .check small { display: block; color: var(--muted); font-size: 12px; }
+  .note { border-top: 1px solid var(--line); padding: 10px 0; }
+  .note:first-child { border-top: 0; padding-top: 0; }
+  .note .t { font-weight: 600; }
+  .note .c { font-size: 14px; white-space: pre-wrap; margin-top: 2px; }
+  .pre { font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+</style>
+</head>
+<body>
+
+<div id="pinView" class="pin hidden">
+  <div class="logo">A</div>
+  <div style="font-size:18px;font-weight:600">Amitek Leads</div>
+  <div id="urlBox" class="hidden" style="text-align:left">
+    <div class="info" style="margin-top:14px">Apps Script web app link</div>
+    <input id="urlInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+           placeholder="https://script.google.com/macros/s/…/exec" style="margin:6px 0 0;letter-spacing:0;font-size:14px;text-align:left">
+  </div>
+  <div id="pinLabel" class="info" style="margin-top:14px">Enter your app PIN</div>
+  <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="PIN">
+  <input id="pin2Input" class="hidden" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Repeat PIN" style="margin-top:0">
+  <button id="pinBtn" class="btn" style="width:100%" onclick="submitPin()">Open</button>
+  <div id="pinErr" class="info" style="color:var(--hot);margin-top:10px"></div>
+</div>
+
+<div id="appView" class="hidden">
+  <header>
+    <button id="backBtn" class="hidden" onclick="goBack()" aria-label="Back">←</button>
+    <h1 id="title">Today</h1>
+    <span id="sendPill" class="pill" title="Whether campaigns and replies go out on WhatsApp">Checking…</span>
+    <button onclick="refresh()" aria-label="Refresh">⟳</button>
+  </header>
+  <main id="main"></main>
+  <nav>
+    <button data-tab="today" onclick="showTab('today')"><span class="i">◉</span>Today</button>
+    <button data-tab="leads" onclick="showTab('leads')"><span class="i">☰</span>Leads</button>
+    <button data-tab="add" onclick="showTab('add')"><span class="i">＋</span>Add</button>
+    <button data-tab="send" onclick="showTab('send')"><span class="i">📣</span>Send</button>
+    <button data-tab="learn" onclick="showTab('learn')"><span class="i">🧠</span>Learn</button>
+    <button data-tab="settings" onclick="showTab('settings')"><span class="i">⚙</span>Settings</button>
+  </nav>
+</div>
+
+<div id="toast" class="hidden"></div>
+<div id="sheetBg" class="sheet-bg hidden" onclick="if(event.target===this)closeSheet()"><div class="sheet" id="sheet"></div></div>
+
+<script>
+var S = { pin: '', tab: 'today', lead: null, leadTab: 'chat', q: '', status: '', stack: [] };
+var NEED_ORDER = { Hot: 'Hot', Overdue: 'Overdue', 'Waiting reply': 'Waiting' };
+
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function $(id) { return document.getElementById(id); }
+
+var GAS = !!(window.google && google.script && google.script.run);
+function handle(r, resolve, reject) {
+  if (r && r.error === 'PIN') { lock(r.message); return reject(new Error(r.message)); }
+  if (r && r.error === 'NOPIN') { askNewPin(); return reject(new Error(r.message)); }
+  if (r && r.error) return reject(new Error(r.error));
+  resolve(r);
+}
+// In the Android app, requests go through the app's native bridge (no browser CORS limits).
+var nativeSeq = 0, nativeCbs = {};
+window.__nativeDone = function (id, ok, text) {
+  var cb = nativeCbs[id]; delete nativeCbs[id];
+  if (cb) { if (ok) cb.res(text); else cb.rej(new Error(text)); }
+};
+function post(url, body) {
+  if (window.AmitekNative) {
+    return new Promise(function (res, rej) { var id = String(++nativeSeq); nativeCbs[id] = { res: res, rej: rej }; AmitekNative.post(id, url, body); });
+  }
+  return fetch(url, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
+    .then(function (res) { return res.text(); });
+}
+function call(action, args) {
+  if (!GAS) {
+    if (!S.url) { lock(); return Promise.reject(new Error('Add the Apps Script link')); }
+    return post(S.url, JSON.stringify({ _app: 1, pin: S.pin, action: action, args: args || {} }))
+      .then(function (txt) {
+        var r; try { r = JSON.parse(txt); } catch (e) {
+          throw new Error(/<html/i.test(txt) ? 'This link did not answer like the Amitek script. Check it is the Web app link, deployed for "Anyone".' : 'Bad response');
+        }
+        return new Promise(function (res, rej) { handle(r, res, rej); });
+      }, function () { throw new Error('Cannot reach the script. Check the link and your internet.'); });
+  }
+  return new Promise(function (resolve, reject) {
+    google.script.run
+      .withSuccessHandler(function (txt) {
+        var r; try { r = JSON.parse(txt); } catch (e) { return reject(new Error('Bad response')); }
+        handle(r, resolve, reject);
+      })
+      .withFailureHandler(function (e) { reject(e instanceof Error ? e : new Error(String(e && e.message || e))); })
+      .api(S.pin, action, JSON.stringify(args || {}));
+  });
+}
+
+function toast(msg, err) {
+  var t = $('toast'); t.textContent = msg; t.className = err ? 'err' : '';
+  clearTimeout(toast.h); toast.h = setTimeout(function () { t.className = 'hidden'; }, err ? 4500 : 2200);
+}
+function fail(e) { toast(e.message || String(e), true); }
+
+function when(iso) {
+  if (!iso) return '';
+  var d = new Date(iso), now = new Date(), diff = d - now, day = 86400000;
+  var t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  var sameDay = d.toDateString() === now.toDateString();
+  var y = new Date(now - day).toDateString() === d.toDateString();
+  var tm = new Date(+now + day).toDateString() === d.toDateString();
+  if (sameDay) return 'Today ' + t;
+  if (y) return 'Yesterday ' + t;
+  if (tm) return 'Tomorrow ' + t;
+  var ds = d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+  return Math.abs(diff) < 6 * day ? d.toLocaleDateString([], { weekday: 'short' }) + ' ' + t : ds;
+}
+
+// ---------------------------------------------------------------- PIN
+function lock(msg) {
+  S.pin = ''; S.claiming = false; store('amitek_pin', null);
+  $('appView').classList.add('hidden'); $('pinView').classList.remove('hidden');
+  $('urlBox').classList.toggle('hidden', GAS); $('urlInput').value = S.url || '';
+  $('pinLabel').textContent = GAS ? 'Enter your app PIN' : 'App PIN'; $('pin2Input').classList.add('hidden');
+  $('pinBtn').textContent = GAS ? 'Open' : 'Connect';
+  $('pinErr').textContent = msg || ''; $('pinInput').value = '';
+  (GAS || S.url ? $('pinInput') : $('urlInput')).focus();
+}
+function askNewPin() {
+  S.claiming = true;
+  $('appView').classList.add('hidden'); $('pinView').classList.remove('hidden');
+  $('pinLabel').textContent = 'First time here: choose a PIN (4 to 8 digits) for your team';
+  $('pin2Input').classList.remove('hidden'); $('pinBtn').textContent = 'Set PIN and finish setup';
+  $('pinInput').value = ''; $('pin2Input').value = ''; $('pinInput').focus();
+}
+function cleanUrl(u) {
+  u = (u || '').trim().replace(/\?.*$/, '');
+  return u;
+}
+function submitPin() {
+  if (!GAS) {
+    var u = cleanUrl($('urlInput').value);
+    if (!/^https?:\/\/.+\/exec$/.test(u)) { $('pinErr').textContent = 'Paste the Web app link from Apps Script. It ends with /exec.'; return; }
+    S.url = u; store('amitek_url', u);
+  }
+  var p = $('pinInput').value.trim();
+  $('pinErr').textContent = '';
+  if (S.claiming) {
+    if (!/^\d{4,8}$/.test(p)) { $('pinErr').textContent = 'PIN must be 4 to 8 digits'; return; }
+    if (p !== $('pin2Input').value.trim()) { $('pinErr').textContent = 'The two PINs do not match'; return; }
+    $('pinBtn').disabled = true; $('pinErr').textContent = 'Setting up the sheet…';
+    return call('claim', { newPin: p }).then(function () {
+      S.claiming = false; S.pin = p; store('amitek_pin', p); $('pinBtn').disabled = false;
+      $('pinView').classList.add('hidden'); $('appView').classList.remove('hidden');
+      toast('Connected. Now add your keys.'); showTab('settings');
+    }).catch(function (e) { $('pinBtn').disabled = false; $('pinErr').textContent = e.message; });
+  }
+  S.pin = p;
+  $('pinBtn').disabled = true;
+  call('settings').then(function () {
+    $('pinBtn').disabled = false; store('amitek_pin', p);
+    $('pinView').classList.add('hidden'); $('appView').classList.remove('hidden');
+    showTab('today');
+  }).catch(function (e) { $('pinBtn').disabled = false; if (!S.claiming) $('pinErr').textContent = e.message; });
+}
+['pinInput', 'pin2Input', 'urlInput'].forEach(function (id) { $(id).addEventListener('keydown', function (e) { if (e.key === 'Enter') submitPin(); }); });
+
+// ---------------------------------------------------------------- navigation
+function setHeader(title, back) {
+  $('title').textContent = title; $('backBtn').classList.toggle('hidden', !back);
+  document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === S.tab); });
+}
+function showTab(tab) { S.tab = tab; S.lead = null; S.camp = null; S.clean = false; S.manage = ''; S.stack = []; render(); window.scrollTo(0, 0); }
+function goBack() { S.lead = null; S.camp = null; S.clean = false; S.manage = ''; render(); }
+function refresh() { if (S.lead) openLead(S.lead.card.phone, true); else render(); }
+function loading() { $('main').innerHTML = '<div class="loading">Loading…</div>'; }
+
+function render() {
+  if (S.tab === 'today') return renderToday();
+  if (S.tab === 'leads') return S.clean ? renderClean() : S.manage === 'bulk' ? renderBulk() : S.manage === 'import' ? renderImport() : renderLeads();
+  if (S.tab === 'add') return renderAdd();
+  if (S.tab === 'settings') return renderSettings();
+  if (S.tab === 'send') return S.camp ? renderCampForm() : renderCampaigns();
+  if (S.tab === 'learn') return renderLearn();
+}
+
+function leadRow(c) {
+  var cls = 'b-' + (NEED_ORDER[c.need] || c.need);
+  var sub = [c.category !== 'Other' ? c.category : '', c.city, '+' + c.phone].filter(Boolean).join(' · ');
+  var right = c.need === 'Waiting reply' ? when(c.lastIn) : when(c.next);
+  return '<div class="lead" onclick="openLead(\'' + esc(c.phone) + '\')"><div class="main">' +
+    '<div class="name">' + esc(c.name) + '</div><div class="sub">' + esc(sub) + '</div>' +
+    (c.note ? '<div class="note">' + esc(c.note) + '</div>' : '') + '</div>' +
+    '<div><span class="badge ' + cls + '">' + esc(c.need === 'Active' || c.need === 'Scheduled' ? c.status : c.need) + '</span>' +
+    (right ? '<div class="when">' + esc(right) + '</div>' : '') + '</div></div>';
+}
+function listOf(rows, emptyText) {
+  return rows.length ? '<div class="list">' + rows.map(leadRow).join('') + '</div>' : '<div class="empty">' + esc(emptyText) + '</div>';
+}
+
+// Sending status in the header, so it shows on every screen (updated whenever the bot status loads).
+function setPill(b) {
+  var p = $('sendPill'); if (!p || !b) return;
+  p.textContent = b.sendEnabled ? 'Sending on' : 'Test mode';
+  p.className = 'pill ' + (b.sendEnabled ? 'live' : 'test');
+}
+
+function botBar(b) {
+  setPill(b);
+  var color = !b.sendEnabled ? 'var(--due)' : !b.botEnabled ? 'var(--muted)' : 'var(--ok)';
+  var text = !b.sendEnabled ? 'Test mode: nothing is sent on WhatsApp' : !b.botEnabled ? 'Bot is off: the team replies' :
+             'Bot is live (' + (b.mode === 'sales' ? 'sales mode' : 'gentle replies') +
+             (b.provider && b.provider !== 'claude' ? ', testing with ' + b.provider : '') + ')';
+  return '<div class="botbar" onclick="showTab(\'settings\')"><span class="dot" style="background:' + color + '"></span>' +
+         '<span style="flex:1">' + esc(text) + '</span><span class="info">Change ›</span></div>';
+}
+
+// ---------------------------------------------------------------- Today
+function renderToday() {
+  setHeader('Today', false); loading();
+  call('dashboard').then(function (d) {
+    if (S.tab !== 'today' || S.lead) return;
+    var c = d.counts;
+    $('main').innerHTML = botBar(d.bot) +
+      '<div class="tiles">' +
+      '<div class="tile hot" onclick="jump(\'hot\')"><b>' + c.hot + '</b><span>Hot</span></div>' +
+      '<div class="tile due" onclick="jump(\'overdue\')"><b>' + c.overdue + '</b><span>Overdue</span></div>' +
+      '<div class="tile wait" onclick="jump(\'waiting\')"><b>' + c.waiting + '</b><span>Waiting</span></div>' +
+      '<div class="tile" onclick="showTab(\'leads\')"><b>' + c.active + '</b><span>Active</span></div></div>' +
+      '<div class="info" style="margin:0 2px">' + c.wrote7d + ' wrote this week · ' + c.won + ' won · ' + c.total + ' leads in total</div>' +
+      '<h2 id="sec-hot">🔥 Hot, call first</h2>' + listOf(d.hot, 'No hot leads right now') +
+      '<h2 id="sec-overdue">⏰ Follow-up due</h2>' + listOf(d.overdue, 'Nothing overdue 👍') +
+      '<h2 id="sec-waiting">💬 Waiting for a reply</h2>' + listOf(d.waiting, 'Nobody is waiting') +
+      '<h2>📅 Coming up</h2>' + listOf(d.scheduled, 'No follow-ups scheduled');
+  }).catch(fail);
+}
+function jump(id) { var el = $('sec-' + id); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
+
+// ---------------------------------------------------------------- Leads
+var STATUSES = ['', 'Hot', 'Replied', 'Qualified', 'Contacted', 'New', 'Won', 'Lost', 'Opted out'];
+function renderLeads() {
+  setHeader('Leads', false);
+  $('main').innerHTML = '<div class="search"><input id="q" type="text" placeholder="Search name, number, city…" value="' + esc(S.q) + '"></div>' +
+    '<div class="chips">' + STATUSES.map(function (s) {
+      return '<button class="chip' + (S.status === s ? ' on' : '') + '" onclick="setStatus(\'' + s + '\')">' + (s || 'All') + '</button>';
+    }).join('') + '</div><div class="row" style="margin:0 2px 8px">' +
+    '<div><button class="btn soft" style="width:100%" onclick="openClean()">🧹 Check data</button></div>' +
+    '<div><button class="btn soft" style="width:100%" onclick="openManage(\'bulk\')">✏️ Bulk edit</button></div>' +
+    '<div><button class="btn soft" style="width:100%" onclick="openManage(\'import\')">⬆️ Import</button></div></div>' +
+    '<div id="results"><div class="loading">Loading…</div></div>';
+  var q = $('q');
+  q.addEventListener('input', function () { clearTimeout(renderLeads.h); renderLeads.h = setTimeout(function () { S.q = q.value; search(); }, 350); });
+  search();
+}
+function setStatus(s) { S.status = s; renderLeads(); }
+
+// ---------------------------------------------------------------- Check lead data
+function openClean() { S.clean = true; render(); window.scrollTo(0, 0); }
+function renderClean() {
+  setHeader('Check lead data', true); loading();
+  call('cleanCheck').then(function (r) {
+    if (!S.clean) return;
+    var item = function (x) {
+      return '<div class="card" style="margin:6px 0;padding:10px"><b>' + esc(x.name || 'No name') + '</b><div class="info">' +
+        esc(x.phone) + (x.city ? ' · ' + esc(x.city) : '') + '</div><div class="info">' + esc(x.note) + '</div></div>';
+    };
+    var block = function (title, count, rows, empty, extra) {
+      return '<h2>' + title + ' (' + count + ')</h2>' + (count ? (extra || '') + rows.map(item).join('') +
+        (count > rows.length ? '<div class="info">Showing ' + rows.length + ' of ' + count + '</div>' : '') : '<div class="info">' + empty + '</div>');
+    };
+    $('main').innerHTML = '<div class="info" style="margin:0 2px 8px">' + r.checked + ' leads checked. ' + r.noCity + ' without a city, ' +
+      r.noBusiness + ' without a business name. Nothing is deleted here.</div>' +
+      block('Phone numbers to fix', r.fixableCount, r.fixable, 'All numbers look right',
+        r.fixableCount ? '<button class="btn green" style="width:100%;margin:6px 0" onclick="fixPhones()">Fix ' + r.fixableCount + ' phone numbers</button>' : '') +
+      block('Duplicate numbers', r.duplicateCount, r.duplicates, 'No duplicate numbers') +
+      block('Numbers that cannot be fixed', r.badPhoneCount, r.badPhones, 'None');
+  }).catch(fail);
+}
+function fixPhones() {
+  call('cleanFix').then(function (r) {
+    toast('Fixed ' + r.fixed + ' phone numbers');
+    renderClean();
+  }).catch(fail);
+}
+
+// ---------------------------------------------------------------- Bulk edit, import, delete
+var CATEGORY_CHOICES = ['Applicator', 'Contractor', 'Builder', 'Architect', 'Dealer', 'Manufacturer', 'End Client', 'Other'];
+var BULK_FIELD_CHOICES = ['Category', 'Tier', 'City', 'Assigned To'];
+function openManage(which) { S.manage = which; render(); window.scrollTo(0, 0); }
+function renderBulk() {
+  setHeader('Bulk edit', true);
+  var opts = function (list, anyLabel) {
+    return (anyLabel ? '<option value="">' + anyLabel + '</option>' : '') + list.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('');
+  };
+  $('main').innerHTML = '<div class="card form">' +
+    '<div class="info">Choose the leads with a filter, then the field and the new value. Preview first. Nothing changes until you press Apply.</div>' +
+    '<label>Category is</label><select id="bCat" onchange="bulkDirty()">' + opts(CATEGORY_CHOICES, 'Any') + '</select>' +
+    '<label>City contains</label><input id="bCity" type="text" placeholder="e.g. Jaipur" oninput="bulkDirty()">' +
+    '<label>Status is</label><select id="bStatus" onchange="bulkDirty()">' + opts(STATUSES.slice(1), 'Any') + '</select>' +
+    '<label>Change this field</label><select id="bField" onchange="bulkDirty()">' + opts(BULK_FIELD_CHOICES) + '</select>' +
+    '<label>New value</label><input id="bValue" type="text" oninput="bulkDirty()">' +
+    '<div class="row"><div><button class="btn ghost" style="width:100%" onclick="bulkPreview()">Preview</button></div>' +
+    '<div><button class="btn" id="bApply" disabled style="width:100%" onclick="bulkApply()">Apply</button></div></div>' +
+    '<div id="bOut"></div></div>';
+}
+function bulkBody() {
+  return { filter: { category: $('bCat').value, city: $('bCity').value, status: $('bStatus').value },
+           field: $('bField').value, value: $('bValue').value };
+}
+function bulkDirty() { S.bulkCount = 0; $('bApply').disabled = true; }
+function bulkPreview() {
+  call('bulkEdit', Object.assign(bulkBody(), { preview: true })).then(function (r) {
+    if (r.error) return fail(new Error(r.error));
+    S.bulkCount = r.count;
+    $('bApply').disabled = !r.count;
+    $('bOut').innerHTML = '<div class="info" style="margin-top:12px"><b>' + r.count + ' leads</b> match. ' + esc(r.field) +
+      ' will become "' + esc(r.value) + '" for them.</div>' + r.sample.map(function (x) {
+        return '<div class="card" style="margin:6px 0;padding:10px"><b>' + esc(x.name || 'No name') + '</b><div class="info">+' +
+          esc(x.phone) + ' · now: ' + esc(x.from || '—') + '</div></div>';
+      }).join('') + (r.count > r.sample.length ? '<div class="info">Showing ' + r.sample.length + ' of ' + r.count + '</div>' : '');
+  }).catch(fail);
+}
+function bulkApply() {
+  var n = S.bulkCount || 0;
+  if (!n || !confirm('Change ' + n + ' leads? This cannot be undone with one tap.')) return;
+  $('bApply').disabled = true;
+  call('bulkEdit', Object.assign(bulkBody(), { preview: false })).then(function (r) {
+    if (r.error) return fail(new Error(r.error));
+    toast(r.message);
+    $('bOut').innerHTML = '<div class="info" style="margin-top:12px">' + esc(r.message) + '. Check the Leads list to see them.</div>';
+    S.bulkCount = 0;
+  }).catch(function (e) { $('bApply').disabled = false; fail(e); });
+}
+function renderImport() {
+  setHeader('Import leads', true);
+  $('main').innerHTML = '<div class="card form">' +
+    '<div class="info">Export your lead sheet as CSV from Excel or Google Sheets, then choose it here, or paste the text. ' +
+    'Columns: Phone (or WhatsApp Number), Name, Business, City, State, Category. Numbers already in the list are skipped.</div>' +
+    '<label>CSV file</label><input type="file" accept=".csv,text/csv" onchange="pickCsv(this)">' +
+    '<label>Or paste CSV text</label><textarea id="csvText" rows="6" placeholder="Phone,Name,City,Category"></textarea>' +
+    '<button class="btn soft" style="width:100%" onclick="previewImport()">Check the file</button>' +
+    '<div id="imOut"></div></div>';
+}
+function pickCsv(input) {
+  var f = input.files && input.files[0];
+  if (!f) return;
+  var rd = new FileReader();
+  rd.onload = function () { $('csvText').value = String(rd.result || ''); previewImport(); };
+  rd.readAsText(f);
+}
+function parseCsv(text) {
+  var rows = [], row = [], cell = '', q = false;
+  for (var i = 0; i < text.length; i++) {
+    var ch = text.charAt(i);
+    if (q) {
+      if (ch === '"') { if (text.charAt(i + 1) === '"') { cell += '"'; i++; } else q = false; }
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text.charAt(i + 1) === '\n') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(function (r) { return r.some(function (c) { return c.trim(); }); });
+}
+function importRows(text) {
+  var table = parseCsv(text.replace(/^﻿/, ''));
+  if (table.length < 2) return [];
+  var head = table[0].map(function (h) { return h.trim().toLowerCase(); });
+  var pick = function (r, names) {
+    for (var j = 0; j < names.length; j++) {
+      var k = head.indexOf(names[j]);
+      if (k >= 0 && r[k] && String(r[k]).trim()) return String(r[k]).trim();
+    }
+    return '';
+  };
+  return table.slice(1).map(function (r) {
+    return { phone: pick(r, ['phone', 'whatsapp number', 'mobile', 'number']), name: pick(r, ['name', 'display name']),
+             business: pick(r, ['business', 'business name']), city: pick(r, ['city']), state: pick(r, ['state']),
+             category: pick(r, ['category', 'lead category']) };
+  });
+}
+function previewImport() {
+  S.importRows = importRows($('csvText').value);
+  var n = S.importRows.length;
+  $('imOut').innerHTML = '<div class="info" style="margin-top:12px"><b>' + n + ' rows</b> found. Duplicates are skipped.</div>' +
+    (n ? '<button class="btn green" style="width:100%;margin-top:8px" onclick="runImport()">Import ' + n + ' rows</button>' : '');
+}
+function runImport() {
+  var rows = S.importRows || [], total = { added: 0, skipped: 0, invalid: 0 }, i = 0;
+  if (!rows.length || !confirm('Import ' + rows.length + ' rows?')) return;
+  (function next() {
+    if (i >= rows.length) {
+      toast('Added ' + total.added + ', skipped ' + total.skipped + ', invalid ' + total.invalid);
+      S.importRows = [];
+      $('imOut').innerHTML = '<div class="info" style="margin-top:12px">Added ' + total.added + ', skipped ' + total.skipped + ', invalid ' + total.invalid + '.</div>';
+      return;
+    }
+    var chunk = rows.slice(i, i + 200);
+    i += 200;
+    call('importLeads', { rows: chunk }).then(function (r) {
+      if (r.error) return fail(new Error(r.error));
+      total.added += r.added; total.skipped += r.skipped; total.invalid += r.invalid;
+      $('imOut').innerHTML = '<div class="info">Working… ' + Math.min(i, rows.length) + ' of ' + rows.length + '</div>';
+      next();
+    }).catch(fail);
+  })();
+}
+function deleteLeadNow() {
+  var c = S.lead.card;
+  if (!confirm('Delete ' + (c.name || 'this lead') + ' (+' + c.phone + ')? This removes the lead from the sheet and cannot be undone.')) return;
+  call('deleteLead', { phone: c.phone, confirm: true }).then(function (r) {
+    if (r.error) return fail(new Error(r.error));
+    toast(r.message);
+    S.lead = null;
+    render();
+  }).catch(fail);
+}
+function search() {
+  var q = S.q, st = S.status;
+  call('search', { q: q, status: st }).then(function (r) {
+    if (S.tab !== 'leads' || S.lead || q !== S.q || st !== S.status) return;
+    $('results').innerHTML = '<div class="info" style="margin:0 2px 8px">' + r.total + ' leads' + (r.total > r.leads.length ? ', showing ' + r.leads.length : '') + '</div>' +
+      listOf(r.leads, 'No leads found');
+  }).catch(fail);
+}
+
+// ---------------------------------------------------------------- Lead detail
+function openLead(phone, keepTab) {
+  if (!keepTab) S.leadTab = 'chat';
+  S.lead = S.lead && S.lead.card.phone === phone ? S.lead : { card: { phone: phone, name: '' } };
+  setHeader('Lead', true); loading(); window.scrollTo(0, 0);
+  call('lead', { phone: phone }).then(function (d) { if (!S.lead) return; S.lead = d; renderLead(); }).catch(fail);
+}
+
+function renderLead() {
+  var d = S.lead, l = d.lead, c = d.card;
+  setHeader(c.name, true);
+  var info = [['Status', l['Status']], ['Category', l['Category']], ['City', l['City']], ['Next follow-up', c.next ? when(c.next) : '—']];
+  var html = '<div class="card"><div style="display:flex;gap:8px;align-items:center"><div style="flex:1;min-width:0">' +
+    '<div style="font-weight:700;font-size:17px">' + esc(c.name) + '</div>' +
+    '<div class="info">+' + esc(c.phone) + (l['Business'] && l['Business'] !== c.name ? ' · ' + esc(l['Business']) : '') + '</div></div>' +
+    '<span class="badge b-' + esc(NEED_ORDER[c.need] || c.need) + '">' + esc(c.need) + '</span></div>' +
+    '<div class="info" style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:4px 12px">' +
+    info.map(function (x) { return '<div>' + x[0] + ': <b>' + esc(x[1] || '—') + '</b></div>'; }).join('') + '</div>' +
+    (l['Follow-up Note'] ? '<div style="margin-top:8px;font-size:14px">📝 ' + esc(l['Follow-up Note']) + '</div>' : '') +
+    (d.botPaused ? '<div class="notice" style="margin-top:10px">Bot is paused for this lead until ' + esc(when(d.pausedUntil)) + '</div>' : '') +
+    '</div>' +
+    '<div class="quick"><a class="btn soft" href="tel:+' + esc(c.phone) + '">📞 Call</a>' +
+    '<a class="btn soft" href="https://wa.me/' + esc(c.phone) + '" target="_blank">💬 WhatsApp</a>' +
+    (d.botPaused ? '<button class="btn soft" onclick="pauseBot(true)">🤖 Bot on</button>' : '<button class="btn soft" onclick="pauseBot(false)">🤫 Bot off</button>') + '</div>' +
+    '<div class="acts"><button class="btn green" onclick="act(\'DONE\')">✓ Done</button>' +
+    '<button class="btn ghost" onclick="laterSheet()">Later</button>' +
+    '<button class="btn green" onclick="noteSheet(\'WON\')">Won</button>' +
+    '<button class="btn red" onclick="noteSheet(\'LOST\')">Lost</button></div>' +
+    '<div class="tabs">' + ['chat', 'details', 'history'].map(function (t) {
+      return '<button class="' + (S.leadTab === t ? 'on' : '') + '" onclick="leadTab(\'' + t + '\')">' + { chat: 'Chat', details: 'Details', history: 'History' }[t] + '</button>';
+    }).join('') + '</div><div id="leadBody"></div>';
+  $('main').innerHTML = html;
+  renderLeadBody();
+}
+function leadTab(t) { S.leadTab = t; renderLead(); }
+
+function renderLeadBody() {
+  var d = S.lead, el = $('leadBody');
+  if (S.leadTab === 'chat') {
+    var msgs = d.messages.length ? d.messages.map(function (m) {
+      var out = m.dir === 'out';
+      var who = !out ? '' : m.sender === 'bot' ? 'Bot · ' : 'Team · ';
+      return '<div class="msg' + (out ? ' out' : '') + (m.sender === 'bot' ? ' bot' : '') + '">' + esc(m.body) +
+             '<div class="meta">' + esc(who + when(m.time)) + '</div></div>';
+    }).join('') : '<div class="empty">No messages yet</div>';
+    var opted = d.lead['Opt-in'] === 'Opted out';
+    el.innerHTML = '<div class="chat">' + msgs + '</div>' +
+      (opted ? '<div class="notice">This customer said STOP. Do not message them.</div>' :
+       d.canReply ? '<div class="replybar"><textarea id="replyText" rows="1" placeholder="Reply as Amitek team…"></textarea>' +
+                    '<button class="btn" style="flex:none" onclick="sendReply(this)">Send</button></div>' :
+       '<div class="notice">WhatsApp allows a typed reply only within 24 hours of the customer\'s last message. Call them, or send an approved template from BlueTick.</div>');
+    var last = el.querySelector('.chat .msg:last-child'); if (last && S.scrollChat) last.scrollIntoView();
+    S.scrollChat = false;
+  } else if (S.leadTab === 'details') {
+    var l = d.lead, o = d.options;
+    function field(k, label, type) { return '<label>' + label + '</label><input type="' + (type || 'text') + '" data-k="' + k + '" value="' + esc(l[k]) + '">'; }
+    function sel(k, label, opts) {
+      return '<label>' + label + '</label><select data-k="' + k + '">' + opts.map(function (x) {
+        return '<option' + (x === l[k] ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select>';
+    }
+    el.innerHTML = '<div class="card form">' + field('Name', 'Name') + field('Business', 'Business') +
+      '<div class="row"><div>' + sel('Category', 'Category', o.categories) + '</div><div>' + sel('Tier', 'Tier', o.tiers) + '</div></div>' +
+      '<div class="row"><div>' + field('City', 'City') + '</div><div>' + field('Area sqft', 'Area (sq ft)', 'number') + '</div></div>' +
+      field('Assigned To', 'Assigned to') +
+      '<label>Requirement</label><textarea data-k="Requirement" rows="3">' + esc(l['Requirement']) + '</textarea>' +
+      '<label>Follow-up note</label><textarea data-k="Follow-up Note" rows="2">' + esc(l['Follow-up Note']) + '</textarea>' +
+      '<button class="btn" style="width:100%;margin-top:14px" onclick="saveLead(this)">Save</button>' +
+      '<button class="btn red" style="width:100%;margin-top:8px" onclick="deleteLeadNow()">Delete this lead</button></div>' +
+      '<div class="info" style="margin:10px 2px">Lead ID ' + esc(l['Lead ID'] || '—') + ' · Campaign ' + esc(l['Campaign'] || '—') +
+      ' · Opt-in ' + esc(l['Opt-in'] || '—') + (l['State'] ? ' · ' + esc(l['State']) : '') + '</div>';
+  } else {
+    el.innerHTML = d.log.length ? d.log.map(function (x) {
+      return '<div class="log"><div>' + esc(x.change) + '</div><div class="t">' + esc(when(x.time)) + ' · ' + esc(x.actor) + '</div></div>';
+    }).join('') : '<div class="empty">No changes recorded yet</div>';
+  }
+}
+
+function afterAction(r) { toast(r.message); openLead(S.lead.card.phone, true); }
+function act(cmd, days, note) { call('act', { phone: S.lead.card.phone, cmd: cmd, days: days, note: note || '' }).then(afterAction).catch(fail); }
+function pauseBot(resume) { call('pause', { phone: S.lead.card.phone, resume: resume }).then(afterAction).catch(fail); }
+function sendReply(btn) {
+  var t = $('replyText').value.trim(); if (!t) return;
+  btn.disabled = true;
+  call('reply', { phone: S.lead.card.phone, text: t }).then(function (r) { S.scrollChat = true; afterAction(r); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+function saveLead(btn) {
+  var f = {}; document.querySelectorAll('#leadBody [data-k]').forEach(function (i) { f[i.dataset.k] = i.value; });
+  btn.disabled = true;
+  call('edit', { phone: S.lead.card.phone, fields: f }).then(afterAction).catch(function (e) { btn.disabled = false; fail(e); });
+}
+
+function openSheet(html) { $('sheet').innerHTML = html; $('sheetBg').classList.remove('hidden'); }
+function closeSheet() { $('sheetBg').classList.add('hidden'); }
+function laterSheet() {
+  openSheet('<h3>Follow up later</h3><div class="chips">' + [1, 2, 3, 7, 15, 30].map(function (n) {
+    return '<button class="chip" onclick="pickDays(this,' + n + ')">' + (n === 1 ? 'Tomorrow' : n + ' days') + '</button>'; }).join('') + '</div>' +
+    '<input id="sheetNote" type="text" placeholder="Note (optional)" style="margin:6px 0 12px">' +
+    '<div class="row"><button class="btn ghost" onclick="closeSheet()">Cancel</button><button class="btn" id="sheetOk" disabled onclick="doLater()">Save</button></div>');
+}
+var laterDays = null;
+function pickDays(el, n) { laterDays = n; el.parentNode.querySelectorAll('.chip').forEach(function (c) { c.classList.toggle('on', c === el); }); $('sheetOk').disabled = false; }
+function doLater() { closeSheet(); act('LATER', laterDays, $('sheetNote').value); }
+function noteSheet(cmd) {
+  openSheet('<h3>' + (cmd === 'WON' ? '🎉 Mark as won' : 'Close as lost') + '</h3>' +
+    '<input id="sheetNote" type="text" placeholder="' + (cmd === 'WON' ? 'Order details (optional)' : 'Reason, e.g. price, bought elsewhere') + '" style="margin-bottom:12px">' +
+    '<div class="row"><button class="btn ghost" onclick="closeSheet()">Cancel</button><button class="btn" onclick="closeSheet();act(\'' + cmd + '\',null,$(\'sheetNote\').value)">Save</button></div>');
+}
+
+// ---------------------------------------------------------------- Add
+function renderAdd() {
+  setHeader('Add a lead', false);
+  var cats = ['Applicator', 'Contractor', 'Builder', 'Architect', 'Dealer', 'Manufacturer', 'End Client', 'Other'];
+  $('main').innerHTML = '<div class="card form">' +
+    '<label>Mobile number</label><input id="a_phone" type="tel" placeholder="98xxxxxxxx">' +
+    '<label>Name</label><input id="a_name" type="text">' +
+    '<label>Business</label><input id="a_business" type="text">' +
+    '<div class="row"><div><label>Category</label><select id="a_category">' + cats.map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select></div>' +
+    '<div><label>City</label><input id="a_city" type="text"></div></div>' +
+    '<label>What they need</label><textarea id="a_note" rows="3"></textarea>' +
+    '<button class="btn" style="width:100%;margin-top:14px" onclick="addLead(this)">Add lead</button></div>' +
+    '<div class="info" style="margin:10px 2px">The lead gets a follow-up for tomorrow. If a welcome campaign is running (Send tab), they get its message right away; otherwise the bot waits for them to write first.</div>';
+}
+function addLead(btn) {
+  var v = function (id) { return $(id).value.trim(); };
+  btn.disabled = true;
+  call('addLead', { phone: v('a_phone'), name: v('a_name'), business: v('a_business'), category: v('a_category'), city: v('a_city'), note: v('a_note') })
+    .then(function (r) { toast(r.message); openLead(r.phone); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+
+// ---------------------------------------------------------------- Settings
+function check(ok, text, hint) {
+  return '<div class="step"><span class="ck ' + (ok ? 'ok' : '') + '">' + (ok ? '✓' : '') + '</span><div>' + esc(text) +
+         (hint && !ok ? '<small>' + hint + '</small>' : '') + '</div></div>';
+}
+function setupHtml(st) {
+  var k = st.keys, base = S.url || st.serviceUrl || '';
+  var relay = (st.relayUrl || '').replace(/\/+$/, '');
+  var hook = !(base && st.webhookKey) ? '' : relay ? relay + '/?to=' + encodeURIComponent(base) + '&key=' + st.webhookKey
+                                                : base + '?key=' + st.webhookKey;
+  var done = k.ai && k.waToken && k.waPhoneId && st.bot.salesWhatsapp && st.lastWebhook && st.installed;
+  return '<h2>Setup' + (done ? ' ✓' : '') + '</h2><div class="card">' +
+    check(st.installed, 'Sheet tabs and timers installed', 'Tap "Repair setup" below.') +
+    check(k.ai, (st.ai.provider === 'claude' ? 'Claude' : aiName(st)) + ' API key', AI_HELP[st.ai.provider]) +
+    check(k.waToken && k.waPhoneId, 'BlueTick token and Phone Number ID', 'From BlueTick > Bulk Campaign > Create API Campaign > API Details.') +
+    check(!!st.bot.salesWhatsapp, 'Salesperson WhatsApp number', 'Add it under WhatsApp bot below.') +
+    check(!!st.lastWebhook, st.lastWebhook ? 'WhatsApp messages arriving (last ' + when(st.lastWebhook) + ')' : 'Webhook added in BlueTick',
+          'Copy the webhook link below into BlueTick > Webhooks, tick Incoming and Outgoing Messages, then send "hi" to your business number.') +
+    '<div class="form"><label>AI that writes the replies</label><select id="k_provider" onchange="providerChanged()">' +
+    st.ai.providers.map(function (p) { return '<option value="' + p.id + '"' + (p.id === st.ai.provider ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') +
+    '</select><div id="k_aiwarn" class="info" style="margin-top:6px"></div>' +
+    '<label id="k_ailabel">API key</label><input id="k_ai" type="password" autocomplete="off" placeholder="' + (k.ai ? 'Saved ✓ (type to replace)' : 'Paste key') + '">' +
+    '<div id="k_modelbox"><label>Model (blank = default)</label><input id="k_model" type="text" autocomplete="off" value="' + esc(st.ai.customModel) + '"></div>' +
+    '<label>BlueTick access token</label><input id="k_token" type="password" autocomplete="off" placeholder="' + (k.waToken ? 'Saved ✓ (type to replace)' : 'Paste token') + '">' +
+    '<label>BlueTick Phone Number ID</label><input id="k_phone" type="text" inputmode="numeric" autocomplete="off" placeholder="' + (k.waPhoneId ? 'Saved ✓ (type to replace)' : 'e.g. 1097…') + '">' +
+    '<div class="row"><div><label>BlueTick API URL</label><input id="k_url" type="text" value="' + esc(st.waApiUrl) + '"></div>' +
+    '<div style="flex:0 0 90px"><label>Version</label><input id="k_ver" type="text" value="' + esc(st.waApiVersion) + '"></div></div>' +
+    '<button class="btn" style="width:100%;margin-top:12px" onclick="saveKeys(this)">Save keys</button></div>' +
+    '<div class="row" style="margin-top:10px"><button class="btn soft" onclick="runTest(this,\'testClaude\')">Test AI</button>' +
+    '<button class="btn soft" onclick="runTest(this,\'testWhatsApp\')">Test WhatsApp</button></div>' +
+    '<label class="info" style="display:block;margin:14px 0 4px">Webhook link for BlueTick</label>' +
+    (hook ? '<div class="hook" id="hookText">' + esc(hook) + '</div><button class="btn ghost" style="width:100%;margin-top:8px" onclick="copyHook()">Copy webhook link</button>'
+          : '<div class="info">Open this app with the Web app link to see it.</div>') +
+    '<details style="margin-top:12px"' + (relay ? ' open' : '') + '><summary class="info" style="cursor:pointer">BlueTick says "failed to verify"?</summary>' +
+    '<div class="info" style="margin:8px 0">Google links answer with a redirect that BlueTick does not accept. Make a free Cloudflare relay ' +
+    '(see the setup guide, 5 minutes), paste its link here and save. The webhook link above then goes through the relay.</div>' +
+    '<input id="k_relay" type="text" autocomplete="off" autocapitalize="off" placeholder="https://amitek-relay.yourname.workers.dev" value="' + esc(relay) + '">' +
+    '<button class="btn soft" style="width:100%;margin-top:8px" onclick="saveRelay(this)">Save relay link</button></details>' +
+    '<button class="btn ghost" style="width:100%;margin-top:8px" onclick="runTest(this,\'install\')">Repair setup</button></div>';
+}
+var AI_HELP = {
+  claude: 'From console.anthropic.com > API keys.',
+  gemini: 'Free: aistudio.google.com > Get API key.',
+  groq: 'Free: console.groq.com > API Keys.',
+  openrouter: 'Free models: openrouter.ai > Keys.'
+};
+function aiName(st) { var p = st.ai.providers.filter(function (x) { return x.id === st.ai.provider; })[0]; return p ? p.name.replace(/ \(.*/, '') : 'AI'; }
+function providerChanged() {
+  var p = $('k_provider').value, st = S.status;
+  var same = st && p === st.ai.provider;
+  $('k_ai').placeholder = same && st.keys.ai ? 'Saved ✓ (type to replace)' : 'Paste key';
+  $('k_ailabel').textContent = (p === 'claude' ? 'Claude' : $('k_provider').selectedOptions[0].text.replace(/ \(.*/, '')) + ' API key';
+  $('k_modelbox').classList.toggle('hidden', p === 'claude');
+  if (!same) $('k_model').value = '';
+  $('k_aiwarn').textContent = p === 'claude' ? '' : 'For testing only: replies are weaker in Hindi/Hinglish, free tiers have daily limits and may use chats to improve their AI. Switch back to Claude before real customers.';
+  $('k_aiwarn').style.color = 'var(--due)';
+}
+function saveKeys(btn) {
+  btn.disabled = true;
+  call('saveKeys', { provider: $('k_provider').value, model: $('k_model').value.trim(), aiKey: $('k_ai').value.trim(), waToken: $('k_token').value.trim(), waPhoneId: $('k_phone').value.trim(),
+                     waApiUrl: $('k_url').value.trim(), waApiVersion: $('k_ver').value.trim() })
+    .then(function () { toast('Keys saved'); renderSettings(); }).catch(function (e) { btn.disabled = false; fail(e); });
+}
+function saveRelay(btn) {
+  btn.disabled = true;
+  call('saveKeys', { relayUrl: $('k_relay').value.trim() })
+    .then(function () { toast('Relay saved. Copy the new webhook link into BlueTick.'); renderSettings(); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+function runTest(btn, action) {
+  var t = btn.textContent; btn.disabled = true; btn.textContent = 'Working…';
+  call(action).then(function (r) { btn.disabled = false; btn.textContent = t; toast(r.message); if (action === 'install') renderSettings(); })
+    .catch(function (e) { btn.disabled = false; btn.textContent = t; fail(e); });
+}
+function copyHook() {
+  var t = $('hookText').textContent;
+  function fallback() { var r = document.createRange(); r.selectNodeContents($('hookText')); var s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    try { document.execCommand('copy'); toast('Copied'); } catch (e) { toast('Select the link and copy it'); } }
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { toast('Copied'); }, fallback); else fallback();
+}
+function changePin() {
+  openSheet('<h3>Change app PIN</h3><input id="np1" type="password" inputmode="numeric" maxlength="8" placeholder="New PIN (4 to 8 digits)" style="margin-bottom:8px">' +
+    '<input id="np2" type="password" inputmode="numeric" maxlength="8" placeholder="Repeat new PIN" style="margin-bottom:12px">' +
+    '<div class="row"><button class="btn ghost" onclick="closeSheet()">Cancel</button><button class="btn" onclick="doChangePin()">Save</button></div>');
+}
+function doChangePin() {
+  var a = $('np1').value.trim();
+  if (a !== $('np2').value.trim()) return toast('The two PINs do not match', true);
+  call('changePin', { newPin: a }).then(function (r) { S.pin = a; store('amitek_pin', a); closeSheet(); toast(r.message); }).catch(fail);
+}
+
+function renderSettings() {
+  setHeader('Settings', false); loading();
+  call('status').then(function (r) {
+    if (S.tab !== 'settings' || S.lead) return;
+    var b = r.bot; S.status = r;
+    $('main').innerHTML = setupHtml(r) + '<h2>WhatsApp bot</h2><div class="card">' +
+      '<div class="switch"><div>Send on WhatsApp<small>Off = test mode. Replies are only written to the sheet.</small></div>' +
+      '<label class="tog"><input type="checkbox" id="s_send"' + (b.sendEnabled ? ' checked' : '') + '><span></span></label></div>' +
+      '<div class="switch"><div>Bot replies automatically<small>Off = the bot stays quiet and the team replies. Alerts still come.</small></div>' +
+      '<label class="tog"><input type="checkbox" id="s_bot"' + (b.botEnabled ? ' checked' : '') + '><span></span></label></div>' +
+      '<div class="switch" style="display:block"><div style="margin-bottom:8px">How the bot talks</div><div class="seg">' +
+      '<button id="m_gentle" class="' + (b.mode !== 'sales' ? 'on' : '') + '" onclick="mode(\'gentle\')">Gentle (phase 1)</button>' +
+      '<button id="m_sales" class="' + (b.mode === 'sales' ? 'on' : '') + '" onclick="mode(\'sales\')">Sales head</button></div></div>' +
+      '<div class="switch" style="display:block"><div>Salesperson WhatsApp<small>Gets hot lead alerts and the 9 AM summary.</small></div>' +
+      '<input id="s_sales" type="tel" value="' + esc(b.salesWhatsapp) + '" placeholder="98xxxxxxxx" style="margin-top:8px"></div>' +
+      '<div class="switch" style="display:block"><div>Amitek business WhatsApp number<small>The number leads message. Used for the "Let leads message you first" links and QR in the Send tab.</small></div>' +
+      '<input id="s_biz" type="tel" value="' + esc((b.businessNumber || '').replace(/^91/, '')) + '" placeholder="98xxxxxxxx" style="margin-top:8px"></div>' +
+      '<details class="switch" style="display:block"' + (Object.keys(b.team || {}).length ? ' open' : '') + '><summary style="cursor:pointer">Team by category' +
+      '<small>Who else gets alerts for each type of lead. The main salesperson still gets everything. Several numbers: separate with commas.</small></summary>' +
+      ['All'].concat(b.categories || []).map(function (c) {
+        return '<label class="info" style="display:block;margin:10px 0 4px">' + (c === 'All' ? 'Every lead (e.g. the owner)' : esc(c)) + '</label>' +
+          '<input type="text" inputmode="tel" class="s_team" data-cat="' + esc(c) + '" value="' + esc((b.team || {})[c] || '') + '" placeholder="98xxxxxxxx, 97xxxxxxxx">';
+      }).join('') + '<div class="info" style="margin-top:8px">They can reply DONE / LATER / WON / LOST / LIST too; LIST shows only their leads.</div></details>' +
+      '<button class="btn" style="width:100%;margin-top:6px" onclick="saveSettings(this)">Save</button></div>' +
+      '<h2>Pitch by category</h2><div class="card form" id="pbBox"><div class="info">Loading…</div></div>' +
+      '<h2>Telegram (team)</h2><div class="card form" id="tgBox"><div class="info">Loading…</div></div>' +
+      '<h2>This phone</h2><div class="card">' +
+      (GAS ? '<div class="info" style="margin-bottom:10px">Tip: in Chrome tap ⋮ then "Add to Home screen" to open this like an app.</div>' :
+             '<div class="info" style="margin-bottom:10px;word-break:break-all">Connected to ' + esc(S.url) + '</div>') +
+      '<div class="row"><button class="btn ghost" onclick="changePin()">Change PIN</button>' +
+      '<button class="btn ghost" onclick="lock()">Lock app</button></div></div>';
+    S.mode = b.mode === 'sales' ? 'sales' : 'gentle';
+    if ($('k_provider')) providerChanged();
+    loadPlaybook();
+    loadTelegram();
+  }).catch(fail);
+}
+// ---- Telegram: employees use a private Telegram bot; only people allowed here get answers
+function loadTelegram() { call('tgStatus').then(renderTelegram).catch(fail); }
+function renderTelegram(r) {
+  if (!$('tgBox')) return;
+  var people = (r.users || []).slice().sort(function (a, b) { return (a.status === 'asked' ? 0 : 1) - (b.status === 'asked' ? 0 : 1); });
+  $('tgBox').innerHTML = r.connected ?
+    '<div class="info">Connected: <b>t.me/' + esc(r.bot) + '</b>. Employees open this link and press Start. They show up below; ' +
+      'allow only company people. Allowed people can add leads, get lead alerts, reply to leads and ask how things work.</div>' +
+    (people.length ? people.map(function (u) {
+      var id = esc(u.id);
+      return '<div class="switch" style="display:block;margin-top:10px"><div><b>' + esc(u.name) + '</b>' + (u.user ? ' <span class="info">@' + esc(u.user) + '</span>' : '') +
+        '<small>' + (u.status === 'allowed' ? 'Allowed' : 'Asked to join ' + esc(when(u.at))) + '</small></div>' +
+        (u.status === 'allowed' ?
+          '<label class="info" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox"' + (u.campaigns ? ' checked' : '') +
+            ' onchange="tgUser(\'' + id + '\',{campaigns:this.checked})">Can send WhatsApp campaigns (asks YES first)</label>' +
+          '<label class="info" style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox"' + (u.alerts ? ' checked' : '') +
+            ' onchange="tgUser(\'' + id + '\',{alerts:this.checked})">Gets lead alerts</label>' +
+          '<button class="btn ghost" style="margin-top:8px" onclick="tgUser(\'' + id + '\',{remove:true})">Remove</button>' :
+          '<div class="row" style="margin-top:8px"><button class="btn" onclick="tgUser(\'' + id + '\',{allow:true})">Allow</button>' +
+          '<button class="btn ghost" onclick="tgUser(\'' + id + '\',{remove:true})">Ignore</button></div>') + '</div>';
+    }).join('') : '<div class="info" style="margin-top:10px">Nobody has pressed Start yet.</div>') +
+    '<details style="margin-top:12px"><summary class="info" style="cursor:pointer">Change or remove the bot</summary>' +
+      '<input id="tg_token" type="password" autocapitalize="off" placeholder="New token from @BotFather" style="margin-top:8px">' +
+      '<div class="row" style="margin-top:8px"><button class="btn" onclick="tgConnect(this)">Connect again</button>' +
+      '<button class="btn ghost" onclick="tgDisconnect()">Disconnect</button></div></details>' :
+    '<div class="info">Let employees use the bot from Telegram: add leads, get alerts, reply to leads, plan campaigns. ' +
+      '1) In Telegram open <b>@BotFather</b>, send /newbot and pick a name. 2) Copy the token it gives you and paste it here. ' +
+      'The relay link (Setup) must be set first.</div>' +
+    '<input id="tg_token" type="password" autocapitalize="off" placeholder="123456789:AA..." style="margin-top:8px">' +
+    '<button class="btn" style="width:100%;margin-top:8px" onclick="tgConnect(this)">Connect</button>';
+}
+function tgConnect(btn) {
+  btn.disabled = true;
+  call('tgConnect', { token: $('tg_token').value.trim() }).then(function (r) { btn.disabled = false; toast(r.message); loadTelegram(); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+function tgDisconnect() {
+  if (!confirm('Disconnect the Telegram bot? Employees will stop getting answers.')) return;
+  call('tgDisconnect').then(function (r) { toast(r.message); loadTelegram(); }).catch(fail);
+}
+function tgUser(id, o) {
+  if (o.remove && !confirm('Remove this person from the Telegram bot?')) return;
+  o.id = id;
+  call('tgUser', o).then(function (r) { toast('Saved'); renderTelegram(r); }).catch(fail);
+}
+function loadPlaybook() {
+  call('playbook').then(function (r) {
+    if (!$('pbBox')) return;
+    $('pbBox').innerHTML = '<div class="info">For each type of lead: the approved BlueTick template its first message uses, ' +
+      'and what the bot offers them in the chat.</div>' + r.categories.map(function (c) {
+        var p = r.playbook[c] || {};
+        return '<details style="margin-top:10px"' + (p.template ? '' : '') + '><summary style="cursor:pointer;font-weight:600">' + esc(c) +
+          (p.template ? ' <span class="info">· ' + esc(p.template) + '</span>' : '') + '</summary>' +
+          '<label>Template name</label><input type="text" autocapitalize="off" class="pb_t" data-cat="' + esc(c) + '" value="' + esc(p.template) + '" placeholder="e.g. amitek_' + esc(c.toLowerCase().replace(/\s+/g, '_')) + '">' +
+          '<label>Template language</label><select class="pb_l" data-cat="' + esc(c) + '">' + LANGS.map(function (l) {
+            return '<option value="' + l[0] + '"' + (l[0] === (p.language || 'en') ? ' selected' : '') + '>' + l[1] + '</option>'; }).join('') + '</select>' +
+          '<label>What the first message says (copy from BlueTick, so the bot continues the same chat)</label><textarea rows="4" class="pb_x" data-cat="' + esc(c) + '">' + esc(p.text) + '</textarea>' +
+          '<label>What to pitch in the chat</label><textarea rows="4" class="pb_p" data-cat="' + esc(c) + '">' + esc(p.pitch) + '</textarea></details>';
+      }).join('') + '<button class="btn" style="width:100%;margin-top:12px" onclick="savePlaybook(this)">Save pitches</button>';
+  }).catch(fail);
+}
+function savePlaybook(btn) {
+  var o = {};
+  document.querySelectorAll('.pb_t').forEach(function (i) {
+    var c = i.dataset.cat, q = function (cls) { return document.querySelector('.' + cls + '[data-cat="' + c + '"]').value; };
+    o[c] = { template: i.value.trim(), language: q('pb_l'), text: q('pb_x').trim(), pitch: q('pb_p').trim() };
+  });
+  btn.disabled = true;
+  call('playbookSave', { playbook: o }).then(function (r) { btn.disabled = false; toast(r.message); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+function teamJson() {
+  var o = {}; document.querySelectorAll('.s_team').forEach(function (i) { if (i.value.trim()) o[i.dataset.cat] = i.value.trim(); });
+  return JSON.stringify(o);
+}
+function mode(m) { S.mode = m; $('m_gentle').classList.toggle('on', m === 'gentle'); $('m_sales').classList.toggle('on', m === 'sales'); }
+function saveSettings(btn) {
+  btn.disabled = true;
+  call('saveSettings', { SEND_ENABLED: $('s_send').checked ? 'true' : 'false', BOT_ENABLED: $('s_bot').checked ? 'true' : 'false',
+                         BOT_MODE: S.mode, SALES_WHATSAPP: $('s_sales').value.trim(), BUSINESS_NUMBER: $('s_biz').value.trim(), TEAM_ROUTING: teamJson() })
+    .then(function (r) { btn.disabled = false; toast('Settings saved'); renderSettings(); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+
+// ---------------------------------------------------------------- Campaigns
+var LANGS = [['en', 'English'], ['hi', 'Hindi'], ['en_US', 'English (US)'], ['en_GB', 'English (UK)']];
+function renderCampaigns() {
+  setHeader('Campaigns', false); loading();
+  call('campaigns').then(function (d) {
+    if (S.tab !== 'send' || S.camp) return;
+    S.campData = d;
+    var list = d.campaigns.filter(function (c) { return c.status !== 'Deleted'; });
+    $('main').innerHTML =
+      (!d.sendEnabled ? '<div class="notice">Test mode is on, so campaigns cannot start. Turn on "Send on WhatsApp" in Settings when ready.</div>' : '') +
+      '<div class="card info" style="margin-bottom:12px">WhatsApp lets a business write first only with a <b>template approved by Meta</b>. ' +
+      'Create it in BlueTick > Templates, wait for "Approved", then use its exact name here. ' +
+      'Messages go out 40 at a time every 5 minutes, ' + esc(d.hoursText) + ' India time, at most <b>' + d.dailyLimit + ' a day</b> (' + d.sent24h + ' sent in the last 24 hours). ' +
+      '<a href="#" onclick="limitSheet();return false">Change limit</a></div>' +
+      '<div class="card form" style="margin-bottom:12px"><label style="margin-top:0">Tell the bot who to message, and when</label>' +
+      '<textarea id="askBot" rows="2" placeholder="applicators ko monday 11 baje message bhejo"></textarea>' +
+      '<div class="info" style="margin:6px 0 8px">Name categories (applicators, builders, architects, contractors, dealers, end clients or "all"), ' +
+      'a day (aaj, kal, monday, 15 oct) and a time. Each category gets its own template from Settings > Pitch by category. ' +
+      'The main salesperson can send the same thing to the bot on WhatsApp.</div>' +
+      '<button class="btn" style="width:100%" onclick="askPlan(this)">Make plan</button></div>' +
+      '<button class="btn ghost" style="width:100%;margin-bottom:12px" onclick="editCamp(null)">＋ New campaign (by hand)</button>' +
+      inboundCard(d.businessNumber) +
+      (list.length ? list.map(campCard).join('') : '<div class="empty">No campaigns yet</div>');
+    if ($('j_cat')) showJoin();
+  }).catch(fail);
+}
+var JOIN_TEXT = {
+  'Applicator': 'Namaste Amitek, main applicator hoon. Aapke products aur rates ki details bhejiye.',
+  'End Client': 'Namaste Amitek, mere ghar ya building me leakage ya seelan ki problem hai. Kripya batayein.',
+  'Builder': 'Namaste Amitek, main builder hoon. Aapke waterproofing, flooring aur baaki solutions ki details bhejiye.',
+  'Architect': 'Namaste Amitek, main architect hoon. Aapke products ke specs aur details bhejiye.',
+  'Contractor': 'Namaste Amitek, main contractor hoon. Aapke products aur project rate ki details bhejiye.',
+  'Dealer': 'Namaste Amitek, main dealer hoon. Dealership ke baare me bataiye.'
+};
+function joinLink(cat) { return 'https://wa.me/' + S.bizNumber + '?text=' + encodeURIComponent(S.joinText[cat]); }
+function inboundCard(num) {
+  S.bizNumber = num; S.joinText = JSON.parse(JSON.stringify(JOIN_TEXT));
+  var head = '<div class="card form" style="margin-bottom:12px"><label style="margin-top:0">Let leads message you first (no template needed)</label>' +
+    '<div class="info">When a person writes to your number first, WhatsApp lets the bot reply freely for 24 hours, so no template is needed. ' +
+    'Put a link or QR on your visiting card, website, Instagram, Google listing, shop stickers or ads. The message already says what they are, so the bot knows which pitch to use.</div>';
+  if (!num) return head + '<div class="info" style="margin-top:8px"><b>Add your Amitek business WhatsApp number in Settings first.</b></div></div>';
+  return head + '<label>For</label><select id="j_cat" onchange="showJoin()">' + Object.keys(JOIN_TEXT).map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') + '</select>' +
+    '<label>Their first message (you can change it)</label><textarea id="j_text" rows="2" oninput="showJoin(true)"></textarea>' +
+    '<div id="j_out"></div></div>';
+}
+function showJoin(typing) {
+  var cat = $('j_cat').value;
+  if (!typing) $('j_text').value = S.joinText[cat]; else S.joinText[cat] = $('j_text').value;
+  var link = joinLink(cat);
+  if (typing && $('j_link')) {  // update the link now, the QR once typing stops
+    $('j_link').value = link;
+    clearTimeout(showJoin.h); showJoin.h = setTimeout(function () { var q = $('j_qr'); if (q) q.src = qrSrc(link); }, 800);
+    return;
+  }
+  $('j_out').innerHTML = '<input id="j_link" type="text" readonly value="' + esc(link) + '" onclick="this.select()" style="margin-top:8px">' +
+    '<div class="row" style="margin-top:8px"><button class="btn" onclick="copyJoin()">Copy link</button>' +
+    (navigator.share ? '<button class="btn ghost" onclick="shareJoin()">Share</button>' : '') + '</div>' +
+    '<div style="text-align:center;margin-top:10px"><img id="j_qr" alt="QR code" width="180" height="180" src="' + esc(qrSrc(link)) + '">' +
+    '<div class="info">Scan with a phone camera to open WhatsApp. Press and hold the QR to save it.</div></div>';
+}
+function qrSrc(link) { return 'https://api.qrserver.com/v1/create-qr-code/?size=360x360&margin=8&data=' + encodeURIComponent(link); }
+function copyJoin() {
+  var el = $('j_link'); el.select();
+  try { (navigator.clipboard ? navigator.clipboard.writeText(el.value) : Promise.reject()).then(function () { toast('Link copied'); }, function () { document.execCommand('copy'); toast('Link copied'); }); }
+  catch (e) { try { document.execCommand('copy'); toast('Link copied'); } catch (e2) { toast('Press and hold the link to copy', true); } }
+}
+function shareJoin() { navigator.share({ text: $('j_text').value, url: $('j_link').value }).catch(function () {}); }
+function askPlan(btn) {
+  var text = $('askBot').value.trim();
+  if (!text) return toast('Write who to message, e.g. applicators ko monday 11 baje', true);
+  btn.disabled = true;
+  call('planFromText', { text: text }).then(function (r) {
+    btn.disabled = false;
+    openSheet('<div class="plan">' + esc(r.summary).replace(/\*([^*]+)\*/g, '<b>$1</b>') + '</div>' +
+      '<div class="row" style="margin-top:12px"><button class="btn ghost" onclick="closeSheet()">Cancel</button>' +
+      '<button class="btn" onclick="planOk(this)">Yes, do it</button></div>');
+  }).catch(function (e) { btn.disabled = false; fail(e); });
+}
+function planOk(btn) {
+  btn.disabled = true;
+  call('planConfirm').then(function (r) { closeSheet(); toast(r.message); $('askBot') && ($('askBot').value = ''); renderCampaigns(); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+function campCard(c) {
+  var f = c.filter || {}, pct = c.total ? Math.min(100, Math.round(100 * c.sent / c.total)) : 0;
+  var who = [f.keepOn ? 'Welcome: every new lead' : '', f.quiet ? '🤫 team replies' : '', (f.categories || []).join(', '), (f.cities || []).join(', '), (f.states || []).join(', '),
+             f.limit ? 'max ' + f.limit : ''].filter(Boolean).join(' · ') || 'All leads';
+  var btns = [];
+  if (c.status === 'Draft' || c.status === 'Paused') btns.push('<button class="btn green" onclick="campStart(\'' + c.id + '\',this)">' + (c.status === 'Draft' ? '▶ Start' : '▶ Resume') + '</button>');
+  if (c.status === 'Running') btns.push('<button class="btn ghost" onclick="campDo(\'campaignPause\',\'' + c.id + '\',this)">⏸ Pause</button>');
+  if (c.status === 'Scheduled') btns.push('<button class="btn ghost" onclick="campDo(\'campaignPause\',\'' + c.id + '\',this)">✕ Cancel schedule</button>');
+  btns.push('<button class="btn soft" onclick="campDo(\'campaignTest\',\'' + c.id + '\',this)">Test to me</button>');
+  if (['Running', 'Done', 'Scheduled'].indexOf(c.status) < 0) btns.push('<button class="btn ghost" onclick="editCamp(\'' + c.id + '\')">Edit</button>');
+  if (c.status === 'Draft') btns.push('<button class="btn red" onclick="campDo(\'campaignDelete\',\'' + c.id + '\',this)">Delete</button>');
+  return '<div class="card camp"><div class="top"><b>' + esc(c.name) + '</b><span class="badge b-' + esc(c.status) + '">' + esc(c.status) + '</span></div>' +
+    '<div class="info">' + (c.template === 'auto' ? 'Template picked by category' : 'Template ' + esc(c.template) + ' (' + esc(c.language) + ')') + ' · ' + esc(who) + '</div>' +
+    (c.status === 'Scheduled' && c.startAt ? '<div class="info">⏰ Starts ' + esc(new Date(c.startAt).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })) + '</div>' : '') +
+    (c.total || c.sent ? '<div class="bar"><i style="width:' + pct + '%"></i></div>' : '') +
+    '<div class="info"><b>' + c.sent + '</b>' + (f.keepOn ? '' : ' of ' + c.total) + ' sent · <b>' + c.replied + '</b> replied' +
+    (c.failed ? ' · ' + c.failed + ' failed' : '') + (c.optedOut ? ' · ' + c.optedOut + ' said STOP' : '') + '</div>' +
+    (c.error ? '<div class="notice">' + esc(c.error) + '</div>' : '') +
+    '<div class="row" style="margin-top:10px;flex-wrap:wrap">' + btns.join('') + '</div></div>';
+}
+function campStart(id, btn) {
+  var c = S.campData.campaigns.filter(function (x) { return x.id === id; })[0];
+  openSheet('<h3>Start "' + esc(c.name) + '"?</h3><div class="info" id="startInfo">Counting leads…</div>' +
+    '<div class="row" style="margin-top:12px"><button class="btn ghost" onclick="closeSheet()">Cancel</button>' +
+    '<button class="btn" id="startOk" disabled onclick="closeSheet();campDo(\'campaignStart\',\'' + id + '\')">Yes, send</button></div>');
+  call('campaignPreview', { filter: c.filter }).then(function (r) {
+    var tpl = c.template === 'auto' ? 'the template set for their category' : 'the template "' + esc(c.template) + '"';
+    $('startInfo').innerHTML = r.welcome ? 'From now on, every new lead you add gets ' + tpl + ' on WhatsApp, until you pause it. Existing leads are not messaged.' :
+      '<b>' + r.count + ' leads</b> match' + (c.sent ? ' (those who already got it are skipped)' : '') +
+      '. They get ' + tpl + ' on WhatsApp' +
+      (c.startAt && new Date(c.startAt) > new Date() && c.status === 'Draft' ? ', starting ' + esc(when(c.startAt)) : '') + '. This cannot be undone.';
+    $('startOk').disabled = false;
+  }).catch(fail);
+}
+function campDo(action, id, btn) {
+  if (btn) btn.disabled = true;
+  call(action, { id: id }).then(function (r) { toast(r.message); renderCampaigns(); })
+    .catch(function (e) { if (btn) btn.disabled = false; fail(e); });
+}
+function limitSheet() {
+  var h = String(S.campData.hours || '9-20').split('-');
+  openSheet('<h3>Campaign messages per day</h3><div class="info">Meta sets how many people your number may message first each day (yours: 2,000). ' +
+    'Start lower and go up in steps, for example 250 to 500 for the first 2 or 3 days, then 1,000, then 2,000, as long as the quality rating in BlueTick stays green. ' +
+    'If people block or report the messages, the rating drops and Meta can lower your limit.</div>' +
+    '<label class="info" style="display:block;margin-top:10px">Messages per day</label>' +
+    '<input id="limitIn" type="number" value="' + S.campData.dailyLimit + '" style="margin:4px 0 8px">' +
+    '<label class="info" style="display:block">Send between (India time, 24-hour clock)</label>' +
+    '<div class="row"><input id="hourFrom" type="number" min="0" max="23" value="' + esc(h[0]) + '"><input id="hourTo" type="number" min="1" max="24" value="' + esc(h[1]) + '"></div>' +
+    '<div class="info" style="margin:4px 0 12px">9 and 20 means 9 AM to 8 PM. Nobody is messaged at night. At 40 every 5 minutes the bot can send about 4,800 in that time, so 2,000 a day is fine.</div>' +
+    '<div class="row"><button class="btn ghost" onclick="closeSheet()">Cancel</button><button class="btn" onclick="saveLimit()">Save</button></div>');
+}
+function saveLimit() { call('campaignLimit', { limit: $('limitIn').value, from: $('hourFrom').value, to: $('hourTo').value }).then(function (r) { closeSheet(); toast(r.message); renderCampaigns(); }).catch(fail); }
+
+function editCamp(id) {
+  var c = id ? S.campData.campaigns.filter(function (x) { return x.id === id; })[0] : null;
+  S.camp = c ? JSON.parse(JSON.stringify(c)) : { id: '', name: '', template: '', language: 'hi', usesName: false, text: '', startAt: '',
+           filter: { categories: [], states: [], cities: [], newOnly: true, canMessageOnly: true, limit: 0, keepOn: false } };
+  render(); window.scrollTo(0, 0);
+}
+function chipsFor(key, opts) {
+  var on = S.camp.filter[key] || [];
+  return '<div class="chips" style="flex-wrap:wrap">' + opts.map(function (o) {
+    return '<button class="chip' + (on.indexOf(o.name) >= 0 ? ' on' : '') + '" onclick="toggleChip(\'' + key + '\',this)" data-v="' + esc(o.name) + '">' +
+      esc(o.name) + ' <span style="opacity:.6">' + o.n + '</span></button>'; }).join('') + '</div>';
+}
+function toggleChip(key, el) {
+  var v = el.dataset.v, a = S.camp.filter[key] = S.camp.filter[key] || [];
+  var i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v);
+  el.classList.toggle('on', i < 0); preview();
+}
+function renderCampForm() {
+  var c = S.camp, f = c.filter, o = S.campData.options;
+  setHeader(c.id ? 'Edit campaign' : 'New campaign', true);
+  $('main').innerHTML = '<div class="card form">' +
+    '<label>Campaign name (for you)</label><input id="c_name" type="text" value="' + esc(c.name) + '" placeholder="e.g. Jaipur applicators October">' +
+    '<label class="check"><input id="c_auto" type="checkbox"' + (c.template === 'auto' ? ' checked' : '') + ' onchange="$(\'c_tplbox\').style.display=this.checked?\'none\':\'block\'">' +
+    '<span>Pick the template by category<small>Each lead gets the template set for its category in Settings > Pitch by category (applicator, builder, dealer…). Leads with no category or no template are left out.</small></span></label>' +
+    '<div id="c_tplbox" style="display:' + (c.template === 'auto' ? 'none' : 'block') + '">' +
+    '<label>Template name, exactly as approved in BlueTick</label><input id="c_tpl" type="text" autocapitalize="off" value="' + esc(c.template === 'auto' ? '' : c.template) + '" placeholder="e.g. amitek_intro_hi">' +
+    '<label>Template language</label><select id="c_lang">' + LANGS.map(function (l) {
+      return '<option value="' + l[0] + '"' + (l[0] === c.language ? ' selected' : '') + '>' + l[1] + ' (' + l[0] + ')</option>'; }).join('') + '</select>' +
+    '<label class="check"><input id="c_name1" type="checkbox"' + (c.usesName ? ' checked' : '') + '><span>The template has {{1}} for the customer\'s name' +
+    '<small>The first name (or business name, or "ji") is filled in.</small></span></label></div>' +
+    '<label>Template text (copy it from BlueTick, so the chat history shows what was sent)</label>' +
+    '<textarea id="c_text" rows="4" placeholder="Namaste {{1}} ji, Amitek Waterproofing se…">' + esc(c.text) + '</textarea></div>' +
+    '<h2>Who gets it</h2><div class="card form">' +
+    '<label>Category (none picked = all)</label>' + chipsFor('categories', o.categories) +
+    '<label>State</label>' + chipsFor('states', o.states) +
+    '<label>Cities (comma separated, blank = all)</label><input id="c_cities" type="text" value="' + esc((f.cities || []).join(', ')) + '" placeholder="Jaipur, Ajmer" oninput="preview()">' +
+    '<label>Most leads to send to (0 = no limit)</label><input id="c_limit" type="number" value="' + (f.limit || 0) + '" oninput="preview()">' +
+    '<label class="check"><input id="c_new" type="checkbox"' + (f.newOnly !== false ? ' checked' : '') + ' onchange="preview()"><span>Only leads we never messaged' +
+    '<small>Skips anyone already chatting with you.</small></span></label>' +
+    '<label class="check"><input id="c_can" type="checkbox"' + (f.canMessageOnly !== false ? ' checked' : '') + ' onchange="preview()"><span>Skip leads marked "Can Message = No"</span></label>' +
+    '<label class="check"><input id="c_keep" type="checkbox"' + (f.keepOn ? ' checked' : '') + ' onchange="preview()"><span>Welcome message: keep running and greet every new lead you add later' +
+    '<small>Leads you add in the app from now on get this template automatically. Your existing list is not messaged.</small></span></label>' +
+    '<label class="check"><input id="c_quiet" type="checkbox"' + (f.quiet ? ' checked' : '') + '><span>Team replies, bot stays quiet' +
+    '<small>The bot does not answer anyone from this campaign. Every reply comes to the team as an alert (WhatsApp and Telegram).</small></span></label>' +
+    '<label>Start on (blank = when you tap Start)</label><input id="c_start" type="datetime-local" value="' + esc(localInput(c.startAt)) + '">' +
+    '<div class="info" style="margin-top:12px" id="c_count">Counting…</div>' +
+    '<div class="info" style="margin-top:4px">Always skipped: people who said STOP, won or lost leads, landlines and the salesperson.</div>' +
+    '<button class="btn" style="width:100%;margin-top:14px" onclick="saveCamp(this)">Save campaign</button></div>';
+  preview();
+}
+function localInput(iso) {
+  if (!iso) return '';
+  var d = new Date(iso), p = function (n) { return (n < 10 ? '0' : '') + n; };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function readCamp() {
+  var c = S.camp, f = c.filter;
+  c.name = $('c_name').value.trim(); c.template = $('c_auto').checked ? 'auto' : $('c_tpl').value.trim(); c.language = $('c_lang').value;
+  c.usesName = $('c_name1').checked; c.text = $('c_text').value.trim();
+  c.startAt = $('c_start').value ? new Date($('c_start').value).toISOString() : '';
+  f.cities = $('c_cities').value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  f.limit = parseInt($('c_limit').value, 10) || 0; f.newOnly = $('c_new').checked; f.canMessageOnly = $('c_can').checked; f.keepOn = $('c_keep').checked;
+  f.quiet = $('c_quiet').checked;
+  return c;
+}
+function preview() {
+  clearTimeout(preview.h);
+  preview.h = setTimeout(function () {
+    if (!S.camp || !$('c_count')) return;
+    var c = readCamp();
+    call('campaignPreview', { filter: c.filter }).then(function (r) {
+      if (!$('c_count')) return;
+      if (r.welcome) { $('c_count').innerHTML = 'Only leads <b>added after you start it</b> get this message. Your existing list is not messaged.'; return; }
+      $('c_count').innerHTML = '<b>' + r.count + ' leads</b> match' +
+        (r.sample.length ? ': ' + esc(r.sample.slice(0, 3).join('; ')) + (r.count > 3 ? '…' : '') : '');
+    }).catch(fail);
+  }, 400);
+}
+function saveCamp(btn) {
+  var c = readCamp(); btn.disabled = true;
+  call('campaignSave', { id: c.id, name: c.name, template: c.template, language: c.language, usesName: c.usesName, text: c.text, filter: c.filter, startAt: c.startAt })
+    .then(function (r) { toast(r.message + '. Tap "Test to me" first.'); S.camp = null; render(); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+
+// ---------------------------------------------------------------- Learn
+function renderLearn() {
+  setHeader('Learn', false); loading();
+  call('knowledge').then(function (k) {
+    if (S.tab !== 'learn') return;
+    S.know = k;
+    var sug = k.suggestions.map(function (n) {
+      return '<div class="note" data-row="' + n.row + '"><input type="text" class="s_t" value="' + esc(n.title) + '" style="font-weight:600">' +
+        '<textarea class="s_c" rows="3" style="margin-top:6px">' + esc(n.content) + '</textarea>' +
+        '<div class="info" style="margin:4px 0 8px">' + esc(n.source) + (n.why ? ' · ' + esc(n.why) : '') + '</div>' +
+        '<div class="row"><button class="btn green" onclick="decide(this,true)">✓ Teach the bot</button><button class="btn ghost" onclick="decide(this,false)">✗ Wrong, skip</button></div></div>';
+    }).join('');
+    $('main').innerHTML =
+      '<div class="card info" style="margin-bottom:12px">The bot answers from what it knows below. It learns from your chats, campaign results and anything you teach it, ' +
+      'but <b>nothing is used until you approve it</b>, so it never picks up a wrong price or promise.</div>' +
+      '<h2>To review' + (k.suggestions.length ? ' (' + k.suggestions.length + ')' : '') + '</h2>' +
+      '<div class="card">' + (sug || '<div class="info">Nothing to review. Tap "Learn from chats" or teach it something below.</div>') + '</div>' +
+      '<h2>Sort leads</h2><div class="card form" id="sortBox"><div class="info">Loading…</div></div>' +
+      '<h2>Learn from chats and campaigns</h2><div class="card">' +
+      '<div class="row"><select id="l_days"><option value="7">Last 7 days</option><option value="14" selected>Last 14 days</option><option value="30">Last 30 days</option></select>' +
+      '<button class="btn" onclick="learnChats(this)">Learn now</button></div>' +
+      '<div class="switch" style="padding-bottom:0"><div>Every Monday, automatically<small>Finds new things in last week\'s chats and asks you to approve them.</small></div>' +
+      '<label class="tog"><input type="checkbox" id="l_auto"' + (k.auto ? ' checked' : '') + ' onchange="learnAuto(this)"><span></span></label></div></div>' +
+      '<h2>Teach the bot</h2><div class="card form">' +
+      '<div class="info">Company profile, products and uses, price list, delivery areas, an export of an old BlueTick campaign: paste it or pick a text/CSV file.</div>' +
+      '<label>Title</label><input id="t_title" type="text" placeholder="e.g. Product list October 2026">' +
+      '<label>Text</label><textarea id="t_text" rows="6" placeholder="Paste here…"></textarea>' +
+      '<input id="t_file" type="file" accept=".txt,.csv,.md,.tsv,text/*" style="margin-top:8px;font-size:13px" onchange="readFile(this)">' +
+      '<div class="row" style="margin-top:12px"><button class="btn" onclick="teach(this,false)">Let AI learn from it</button>' +
+      '<button class="btn ghost" onclick="teach(this,true)">Save as it is</button></div>' +
+      '<div class="info" style="margin-top:6px">"Let AI learn" pulls out the useful points for you to approve. "Save as it is" adds the whole text right away (good for a price list you checked).</div></div>' +
+      '<h2>What the bot knows (' + k.docs.length + ')</h2>' +
+      (k.docs.length ? '<div class="list">' + k.docs.map(function (d, i) {
+        return '<div class="lead" onclick="editDoc(' + i + ')"><div class="main"><div class="name">' + esc(d.title || 'Untitled') + '</div>' +
+          '<div class="pre">' + esc(d.content) + '</div></div></div>'; }).join('') + '</div>' : '<div class="empty">Nothing yet</div>') +
+      '<div class="info" style="margin:8px 2px">' + Math.round(k.size / 1000) + 'k characters. Keep it under about 80k; very long texts are cut.</div>';
+    loadSort();
+  }).catch(fail);
+}
+function loadSort() {
+  call('sortOverview').then(function (r) {
+    if (!$('sortBox')) return;
+    S.sort = r;
+    var opts = function (sel) { return r.categories.map(function (c) { return '<option' + (c === sel ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join(''); };
+    var list = r.pending.map(function (x) {
+      return '<div class="note" data-row="' + x.row + '"><div><b>' + esc(x.lead || '+' + x.phone) + '</b>' + (x.type ? ' <span class="info">· ' + esc(x.type) + '</span>' : '') + '</div>' +
+        '<div class="info" style="margin:2px 0 6px">' + esc(x.why) + '</div>' +
+        '<div class="row"><select class="sort_c">' + opts(x.category) + '</select>' +
+        '<button class="btn green" onclick="sortDecide(this,true)">✓</button><button class="btn ghost" onclick="sortDecide(this,false)">✗</button></div></div>';
+    }).join('');
+    $('sortBox').innerHTML =
+      '<div class="info">The bot reads each lead\'s name, business type and address and works out what kind of customer it is (applicator, builder, dealer…), ' +
+      'so every lead gets the right template. You approve what it decides.</div>' +
+      '<div class="info" style="margin:8px 0"><b>' + r.unsorted + '</b> leads have no clear category yet.' + (r.hasAi ? '' : ' Add the AI key in Settings so it can read the unclear ones.') + '</div>' +
+      '<button class="btn" style="width:100%" onclick="sortRun(this)">Sort leads now</button>' +
+      (r.pendingCount ? '<h2 style="margin:14px 0 6px">To approve (' + r.pendingCount + ')</h2>' + list +
+        (r.pendingCount > 60 ? '<div class="info">Showing the first 60.</div>' : '') +
+        '<button class="btn green" style="width:100%;margin-top:8px" onclick="sortAll(this)">✓ Approve all ' + r.pendingCount + '</button>' : '') +
+      '<label style="margin-top:14px">Teach it how you tell them apart (optional)</label>' +
+      '<textarea id="sort_rules" rows="3" placeholder="e.g. Anything with Painting or Painters in the name is an Applicator. Interior designers are Architects.">' + esc(r.rules) + '</textarea>' +
+      '<button class="btn ghost" style="width:100%;margin-top:8px" onclick="sortTeach(this)">Save what I taught</button>';
+  }).catch(fail);
+}
+function sortRun(btn) {
+  var t = btn.textContent; btn.disabled = true; btn.textContent = 'Reading leads…';
+  var typed = $('sort_rules') ? $('sort_rules').value.trim() : '';
+  (typed !== String(S.sort.rules || '').trim() ? call('sortTeach', { text: typed }) : Promise.resolve()).then(function () { return call('sortRun'); }).then(function (r) { toast(r.message); loadSort(); })
+    .catch(function (e) { btn.disabled = false; btn.textContent = t; fail(e); });
+}
+function sortDecide(btn, ok) {
+  var n = btn.closest('.note'); btn.disabled = true;
+  call('sortDecide', { row: n.dataset.row, approve: ok, category: n.querySelector('.sort_c').value })
+    .then(function (r) { toast(r.message); loadSort(); }).catch(function (e) { btn.disabled = false; fail(e); });
+}
+function sortAll(btn) {
+  btn.disabled = true;
+  call('sortApproveAll').then(function (r) { toast(r.message); loadSort(); }).catch(function (e) { btn.disabled = false; fail(e); });
+}
+function sortTeach(btn) {
+  btn.disabled = true;
+  call('sortTeach', { text: $('sort_rules').value }).then(function (r) { btn.disabled = false; toast(r.message); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
+}
+function decide(btn, ok) {
+  var n = btn.closest('.note'); btn.disabled = true;
+  call('learnDecide', { row: n.dataset.row, approve: ok, title: n.querySelector('.s_t').value, content: n.querySelector('.s_c').value })
+    .then(function (r) { toast(r.message); renderLearn(); }).catch(function (e) { btn.disabled = false; fail(e); });
+}
+function learnChats(btn) {
+  var t = btn.textContent; btn.disabled = true; btn.textContent = 'Reading chats…';
+  call('learnChats', { days: $('l_days').value }).then(function (r) { toast(r.message); renderLearn(); })
+    .catch(function (e) { btn.disabled = false; btn.textContent = t; fail(e); });
+}
+function learnAuto(el) { call('learnAuto', { on: el.checked }).then(function (r) { toast(r.message); }).catch(fail); }
+function readFile(inp) {
+  var f = inp.files && inp.files[0]; if (!f) return;
+  if (f.size > 2000000) { toast('File is too big (max 2 MB of text)', true); return; }
+  var r = new FileReader();
+  r.onload = function () { $('t_text').value = String(r.result).slice(0, 60000); if (!$('t_title').value) $('t_title').value = f.name.replace(/\.[^.]+$/, ''); };
+  r.readAsText(f);
+}
+function teach(btn, direct) {
+  var t = btn.textContent; btn.disabled = true; if (!direct) btn.textContent = 'Learning…';
+  call('learnText', { title: $('t_title').value.trim(), text: $('t_text').value.trim(), direct: direct })
+    .then(function (r) { toast(r.message); renderLearn(); })
+    .catch(function (e) { btn.disabled = false; btn.textContent = t; fail(e); });
+}
+function editDoc(i) {
+  var d = S.know.docs[i];
+  openSheet('<h3>Edit</h3><input id="d_title" type="text" value="' + esc(d.title) + '" style="margin-bottom:8px">' +
+    '<textarea id="d_text" rows="10">' + esc(d.content) + '</textarea>' +
+    '<div class="row" style="margin-top:12px"><button class="btn red" onclick="delDoc(' + d.row + ')">Delete</button>' +
+    '<button class="btn ghost" onclick="closeSheet()">Cancel</button><button class="btn" onclick="saveDoc(' + d.row + ')">Save</button></div>');
+}
+function saveDoc(row) { call('knowledgeSave', { row: row, title: $('d_title').value, content: $('d_text').value }).then(function (r) { closeSheet(); toast(r.message); renderLearn(); }).catch(fail); }
+function delDoc(row) { if (!confirm('Delete this from what the bot knows?')) return; call('knowledgeDelete', { row: row }).then(function (r) { closeSheet(); toast(r.message); renderLearn(); }).catch(fail); }
+
+// ---------------------------------------------------------------- start
+(function start() {
+  S.url = store('amitek_url') || '';
+  var saved = store('amitek_pin');
+  if (!saved || (!GAS && !S.url)) return lock();
+  S.pin = saved; $('appView').classList.remove('hidden'); showTab('today');
+})();
+</script>
+</body>
+</html>
