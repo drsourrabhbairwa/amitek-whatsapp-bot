@@ -481,6 +481,24 @@ const tests = {
     assert.strictEqual(t.template.name, 'amitek_dealer_offer');
     assert.deepStrictEqual(t.template.components[0].parameters.map(p => p.text), ['Priya', 'Waterproofing', 'Jaipur']);
   },
+  'single chat home screen: real commands answer in chat, navigation asks open the right screen'() {
+    const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES } }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    const sh = env.sheets['Leads'];
+    const row = (phone, f) => { const h = sh.rows[0]; sh.rows.push(h.map(c => c === 'Phone' ? phone : (f[c] !== undefined ? f[c] : (c === 'Status' ? 'New' : ''))));};
+    row('919811110021', { Name: 'Vikas', City: 'Jaipur', Status: 'Hot' });
+    let r = api('assistant', { text: 'DONE 919811110021 called them' });
+    assert(r.reply.startsWith('✅'), r.reply); assert.strictEqual(r.nav, null);
+    assert.strictEqual(lead(env, '919811110021').Status, 'Contacted');
+    r = api('assistant', { text: 'LIST' });
+    assert(r.reply.includes('Amitek leads')); assert.strictEqual(r.nav, null);
+    r = api('assistant', { text: 'show board' });
+    assert.deepStrictEqual(r.nav, { tab: 'today' });
+    r = api('assistant', { text: 'open leads' });
+    assert.deepStrictEqual(r.nav, { tab: 'leads' });
+    r = api('assistant', { text: 'add a new lead' });
+    assert.deepStrictEqual(r.nav, { tab: 'add' });
+  },
   'campaign pauses itself when WhatsApp refuses the template'() {
     const env = load(BASE);
     const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));

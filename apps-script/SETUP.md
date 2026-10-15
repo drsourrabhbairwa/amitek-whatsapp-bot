@@ -95,8 +95,13 @@ existing numbers are left as they are. Groups are ignored, strangers get no data
   "Let AI learn from it" pulls out the useful points; "Save as it is" adds the whole text.
 - **Learn from chats**: the AI reads recent chats and campaign results and suggests what the bot should know. It also does this every Monday.
 - Nothing is used until you tap **Teach the bot** on it, so the bot never learns a wrong price by itself. Edit or delete anything under "What the bot knows".
+- **Basic troubleshooting**: paste `knowledge/05_troubleshooting.md` from this repo into Learn > Teach the bot ("Save as it is")
+  so the bot can give a safe, honest likely-cause when someone describes a leak, seepage, crack or blistering, before handing off.
 
 ## What the app does
+- **Chat** (home screen): type anything — a command (`DONE 98xxxxxxxx`, `LIST`, `CAMPAIGNS`), a campaign in plain
+  words ("applicators ko monday 11 baje message bhejo"), or just ask to open a screen ("show board", "open leads",
+  "add a lead"). The whole team can use this from any phone with the app; nothing needs to be clicked through.
 - **Today**: hot leads, overdue follow-ups, customers waiting for a reply, what's coming up.
 - **Lead**: the WhatsApp chat, Call and WhatsApp buttons, Done / Later / Won / Lost, edit details,
   change history, and a reply box to answer as the team (the bot then stays quiet for that customer for 12 hours).

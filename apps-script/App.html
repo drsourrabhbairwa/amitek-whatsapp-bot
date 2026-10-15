@@ -90,13 +90,26 @@
   .tabs { display: flex; border-bottom: 1px solid var(--line); margin: 14px 0 10px; }
   .tabs button { flex: 1; border: 0; background: none; padding: 10px; color: var(--muted); border-bottom: 2px solid transparent; cursor: pointer; }
   .tabs button.on { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600; }
-  .chat { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; }
-  .msg { max-width: 84%; padding: 7px 10px 5px; border-radius: 12px; background: var(--in); border: 1px solid var(--line); white-space: pre-wrap; word-wrap: break-word; }
-  .msg.out { align-self: flex-end; background: var(--out); border-color: transparent; }
-  .msg.bot { background: var(--outbot); }
+  .chat { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; position: relative; }
+  .daysep { align-self: center; font-size: 11px; color: var(--muted); background: var(--grey-soft); border-radius: 10px; padding: 3px 10px; margin: 10px 0 6px; }
+  .msgrow { display: flex; flex-direction: column; margin-bottom: 6px; max-width: 86%; }
+  .msgrow.out { align-self: flex-end; align-items: flex-end; }
+  .who { font-size: 11px; font-weight: 600; margin: 0 2px 2px; padding: 1px 7px; border-radius: 8px; width: fit-content; }
+  .who.bot { color: var(--brand); background: var(--brand-soft); }
+  .who.team { color: var(--ok); background: var(--ok-soft); }
+  .msg { padding: 7px 10px 5px; border-radius: 12px; background: var(--in); border: 1px solid var(--line); white-space: pre-wrap; word-wrap: break-word; box-shadow: var(--shadow); }
+  .msgrow.out .msg { background: var(--out); border-color: transparent; }
+  .msgrow.bot .msg { background: var(--outbot); }
+  .camtag { display: block; font-size: 10px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
   .msg .meta { font-size: 11px; color: var(--muted); text-align: right; margin-top: 2px; }
-  .replybar { position: sticky; bottom: 70px; display: flex; gap: 8px; background: var(--bg); padding: 8px 0; }
-  .replybar textarea { min-height: 44px; max-height: 120px; resize: none; }
+  .jumplatest { position: sticky; bottom: 128px; align-self: center; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 4px 12px; font-size: 12px; color: var(--muted); box-shadow: var(--shadow); cursor: pointer; z-index: 2; }
+  .quickchips { display: flex; gap: 6px; overflow-x: auto; padding: 6px 0 2px; -webkit-overflow-scrolling: touch; }
+  .quickchips::-webkit-scrollbar { display: none; }
+  .chip-quick { flex: none; font-size: 12.5px; padding: 6px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); white-space: nowrap; cursor: pointer; }
+  .chip-quick:active { background: var(--brand-soft); }
+  .replybar { position: sticky; bottom: 70px; display: flex; gap: 8px; background: var(--bg); padding: 8px 0; align-items: flex-end; }
+  .replybar textarea { min-height: 44px; max-height: 120px; resize: none; overflow-y: auto; }
+  .replybar button[disabled] { opacity: .6; }
   .notice { font-size: 13px; padding: 10px 12px; border-radius: 10px; background: var(--due-soft); color: var(--due); margin: 6px 0; }
   .form label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
   .switch { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--line); gap: 12px; }
@@ -177,6 +190,7 @@
   </header>
   <main id="main"></main>
   <nav>
+    <button data-tab="assistant" onclick="showTab('assistant')"><span class="i">💬</span>Chat</button>
     <button data-tab="today" onclick="showTab('today')"><span class="i">◉</span>Today</button>
     <button data-tab="leads" onclick="showTab('leads')"><span class="i">☰</span>Leads</button>
     <button data-tab="add" onclick="showTab('add')"><span class="i">＋</span>Add</button>
@@ -190,7 +204,7 @@
 <div id="sheetBg" class="sheet-bg hidden" onclick="if(event.target===this)closeSheet()"><div class="sheet" id="sheet"></div></div>
 
 <script>
-var S = { pin: '', tab: 'today', lead: null, leadTab: 'chat', q: '', status: '', stack: [] };
+var S = { pin: '', tab: 'today', lead: null, leadTab: 'chat', q: '', status: '', stack: [], assistantLog: [] };
 var NEED_ORDER = { Hot: 'Hot', Overdue: 'Overdue', 'Waiting reply': 'Waiting' };
 
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
@@ -303,7 +317,7 @@ function submitPin() {
   call('settings').then(function () {
     $('pinBtn').disabled = false; store('amitek_pin', p);
     $('pinView').classList.add('hidden'); $('appView').classList.remove('hidden');
-    showTab('today');
+    showTab('assistant');
   }).catch(function (e) { $('pinBtn').disabled = false; if (!S.claiming) $('pinErr').textContent = e.message; });
 }
 ['pinInput', 'pin2Input', 'urlInput'].forEach(function (id) { $(id).addEventListener('keydown', function (e) { if (e.key === 'Enter') submitPin(); }); });
@@ -319,12 +333,43 @@ function refresh() { if (S.lead) openLead(S.lead.card.phone, true); else render(
 function loading() { $('main').innerHTML = '<div class="loading">Loading…</div>'; }
 
 function render() {
+  if (S.tab === 'assistant') return renderAssistant();
   if (S.tab === 'today') return renderToday();
   if (S.tab === 'leads') return S.clean ? renderClean() : S.manage === 'bulk' ? renderBulk() : S.manage === 'import' ? renderImport() : renderLeads();
   if (S.tab === 'add') return renderAdd();
   if (S.tab === 'settings') return renderSettings();
   if (S.tab === 'send') return S.camp ? renderCampForm() : renderCampaigns();
   if (S.tab === 'learn') return renderLearn();
+}
+
+// ---------------------------------------------------------------- Assistant (single chat home screen)
+var ASSIST_SUGGEST = ['Show board', 'LIST', 'HELP', 'CAMPAIGNS'];
+function renderAssistant() {
+  setHeader('Amitek Assistant', false);
+  var log = S.assistantLog;
+  var body = log.length ? log.map(function (m) {
+    return '<div class="msgrow' + (m.me ? ' out' : '') + '">' + (m.me ? '' : '<div class="who bot">🤖 Assistant</div>') +
+           '<div class="msg">' + esc(m.text) + '</div></div>';
+  }).join('') : '<div class="empty">Ask it to do anything — "show board", "LIST", "WON 98xxxxxxxx", or plan a campaign like "applicators ko monday 11 baje message bhejo".</div>';
+  $('main').innerHTML = '<div class="chat" id="assistBox" style="min-height:40vh">' + body + '</div>' +
+    '<div class="quickchips">' + ASSIST_SUGGEST.map(function (q) {
+      return '<button class="chip-quick" onclick="useAssistSuggest(' + JSON.stringify(q) + ')">' + esc(q) + '</button>'; }).join('') + '</div>' +
+    '<div class="replybar"><textarea id="assistText" rows="1" placeholder="Ask or tell the assistant anything… (Enter to send)" ' +
+    'oninput="growReply(this)" onkeydown="assistKey(event,this)"></textarea>' +
+    '<button class="btn" style="flex:none" onclick="sendAssistant(this)">Send</button></div>';
+  var box = $('assistBox'); if (box) box.scrollTop = box.scrollHeight;
+}
+function useAssistSuggest(q) { var ta = $('assistText'); if (!ta) return; ta.value = q; growReply(ta); ta.focus(); }
+function assistKey(ev, ta) { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); sendAssistant(ta.nextElementSibling); } }
+function sendAssistant(btn) {
+  var ta = $('assistText'), t = ta.value.trim(); if (!t) return;
+  S.assistantLog.push({ me: true, text: t }); ta.value = ''; renderAssistant();
+  btn = $('assistText').nextElementSibling; btn.disabled = true; var orig = btn.textContent; btn.textContent = 'Working…';
+  call('assistant', { text: t }).then(function (r) {
+    S.assistantLog.push({ me: false, text: r.reply });
+    if (r.nav && r.nav.tab && r.nav.tab !== 'assistant') { showTab(r.nav.tab); return; }
+    renderAssistant();
+  }).catch(function (e) { S.assistantLog.push({ me: false, text: 'Sorry, that did not work: ' + e.message }); renderAssistant(); });
 }
 
 function leadRow(c) {
@@ -606,22 +651,50 @@ function renderLead() {
 }
 function leadTab(t) { S.leadTab = t; renderLead(); }
 
+var QUICK_REPLIES = ['Thank you ji, our team will call you shortly.', 'Can you share your city?', 'Noted, we will follow up soon.', 'Sorry for the delay, checking this now.'];
+function dayLabel_(iso) {
+  var d = new Date(iso), now = new Date();
+  var day = 86400000, sameDay = d.toDateString() === now.toDateString();
+  var y = new Date(now - day).toDateString() === d.toDateString();
+  if (sameDay) return 'Today'; if (y) return 'Yesterday';
+  return d.toLocaleDateString([], { day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
+}
+function msgTime_(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
 function renderLeadBody() {
   var d = S.lead, el = $('leadBody');
+  window.onscroll = null;
   if (S.leadTab === 'chat') {
-    var msgs = d.messages.length ? d.messages.map(function (m) {
-      var out = m.dir === 'out';
-      var who = !out ? '' : m.sender === 'bot' ? 'Bot · ' : 'Team · ';
-      return '<div class="msg' + (out ? ' out' : '') + (m.sender === 'bot' ? ' bot' : '') + '">' + esc(m.body) +
-             '<div class="meta">' + esc(who + when(m.time)) + '</div></div>';
-    }).join('') : '<div class="empty">No messages yet</div>';
+    var lastDay = null, msgs = '';
+    if (!d.messages.length) msgs = '<div class="empty">No messages yet</div>';
+    else d.messages.forEach(function (m) {
+      var day = dayLabel_(m.time);
+      if (day !== lastDay) { msgs += '<div class="daysep">' + esc(day) + '</div>'; lastDay = day; }
+      var out = m.dir === 'out', isBot = m.sender === 'bot';
+      var who = out ? (isBot ? '<div class="who bot">🤖 Bot</div>' : '<div class="who team">👤 Team</div>') : '';
+      var body = esc(m.body), camtag = '';
+      var cm = /^\[Campaign:\s*([^\]]+)\]\s*/.exec(m.body);
+      if (cm) { camtag = '<span class="camtag">📣 Campaign · ' + esc(cm[1]) + '</span>'; body = esc(m.body.slice(cm[0].length)); }
+      msgs += '<div class="msgrow' + (out ? ' out' : '') + (isBot ? ' bot' : '') + '">' + who +
+              '<div class="msg">' + camtag + body + '<div class="meta">' + esc(msgTime_(m.time)) + '</div></div></div>';
+    });
     var opted = d.lead['Opt-in'] === 'Opted out';
-    el.innerHTML = '<div class="chat">' + msgs + '</div>' +
+    el.innerHTML = '<div class="chat" id="chatBox">' + msgs + '</div>' +
+      '<div class="jumplatest" id="jumpLatest" style="display:none" onclick="jumpToLatest()">⬇ Jump to latest</div>' +
       (opted ? '<div class="notice">This customer said STOP. Do not message them.</div>' :
-       d.canReply ? '<div class="replybar"><textarea id="replyText" rows="1" placeholder="Reply as Amitek team…"></textarea>' +
+       d.canReply ? '<div class="quickchips">' + QUICK_REPLIES.map(function (q, i) {
+                      return '<button class="chip-quick" onclick="useQuickReply(' + i + ')">' + esc(q.length > 28 ? q.slice(0, 28) + '…' : q) + '</button>'; }).join('') + '</div>' +
+                    '<div class="replybar"><textarea id="replyText" rows="1" placeholder="Reply as Amitek team… (Enter to send)" oninput="growReply(this)" onkeydown="replyKey(event,this)"></textarea>' +
                     '<button class="btn" style="flex:none" onclick="sendReply(this)">Send</button></div>' :
        '<div class="notice">WhatsApp allows a typed reply only within 24 hours of the customer\'s last message. Call them, or send an approved template from BlueTick.</div>');
-    var last = el.querySelector('.chat .msg:last-child'); if (last && S.scrollChat) last.scrollIntoView();
+    var checkJump = function () {
+      var last = el.querySelector('.chat .msgrow:last-child'), jump = $('jumpLatest');
+      if (!last || !jump) return;
+      jump.style.display = (last.getBoundingClientRect().bottom > window.innerHeight + 40) ? 'block' : 'none';
+    };
+    window.onscroll = checkJump;
+    var last = el.querySelector('.chat .msgrow:last-child');
+    if (last && S.scrollChat) last.scrollIntoView();
+    checkJump();
     S.scrollChat = false;
   } else if (S.leadTab === 'details') {
     var l = d.lead, o = d.options;
@@ -650,11 +723,23 @@ function renderLeadBody() {
 function afterAction(r) { toast(r.message); openLead(S.lead.card.phone, true); }
 function act(cmd, days, note) { call('act', { phone: S.lead.card.phone, cmd: cmd, days: days, note: note || '' }).then(afterAction).catch(fail); }
 function pauseBot(resume) { call('pause', { phone: S.lead.card.phone, resume: resume }).then(afterAction).catch(fail); }
+function jumpToLatest() {
+  var last = document.querySelector('.chat .msgrow:last-child');
+  if (last) last.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+function useQuickReply(i) {
+  var ta = $('replyText'); if (!ta) return;
+  ta.value = QUICK_REPLIES[i]; growReply(ta); ta.focus();
+}
+function growReply(ta) { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 120) + 'px'; }
+function replyKey(ev, ta) {
+  if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); sendReply(ta.nextElementSibling); }
+}
 function sendReply(btn) {
-  var t = $('replyText').value.trim(); if (!t) return;
-  btn.disabled = true;
+  var ta = $('replyText'), t = ta.value.trim(); if (!t) return;
+  btn.disabled = true; var orig = btn.textContent; btn.textContent = 'Sending…';
   call('reply', { phone: S.lead.card.phone, text: t }).then(function (r) { S.scrollChat = true; afterAction(r); })
-    .catch(function (e) { btn.disabled = false; fail(e); });
+    .catch(function (e) { btn.disabled = false; btn.textContent = orig; fail(e); });
 }
 function saveLead(btn) {
   var f = {}; document.querySelectorAll('#leadBody [data-k]').forEach(function (i) { f[i.dataset.k] = i.value; });
@@ -1261,7 +1346,7 @@ function delDoc(row) { if (!confirm('Delete this from what the bot knows?')) ret
   S.url = store('amitek_url') || '';
   var saved = store('amitek_pin');
   if (!saved || (!GAS && !S.url)) return lock();
-  S.pin = saved; $('appView').classList.remove('hidden'); showTab('today');
+  S.pin = saved; $('appView').classList.remove('hidden'); showTab('assistant');
 })();
 </script>
 </body>
