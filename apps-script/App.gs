@@ -315,7 +315,8 @@ var APP_ACTIONS = {
     var text = String(a.text || '').trim();
     if (!text) return { error: 'Type something' };
     var nav = assistantNav_(text);
-    var reply = salesCommand_(text, setting_('SALES_WHATSAPP'));
+    // the app ignores the reply and just switches screens when nav is set, so skip the (possibly AI) reply then
+    var reply = nav ? 'Done.' : salesCommand_(text, setting_('SALES_WHATSAPP'), true);
     return { reply: String(reply || 'Done.'), nav: nav };
   },
 
@@ -479,7 +480,10 @@ function writeSettings_(s) {
 function assistantNav_(text) {
   var first = String(text).trim().split(/\s+/)[0] || '';
   if (['HELP', '?', 'LIST', 'PENDING', 'DONE', 'LATER', 'WON', 'LOST', 'CAMPAIGNS'].indexOf(first.toUpperCase()) >= 0) return null;
-  var t = String(text).toLowerCase();
+  var t = String(text).trim().toLowerCase();
+  // only treat short, imperative phrasing as "open this screen" - a real question (how/what/kitne/kaun/kya/kaise/bata…)
+  // or anything longer should reach the AI chat reply instead of silently jumping screens with no answer shown.
+  if (t.length > 40 || /[?]|\b(how|what|why|when|kaise|kaun|kya|kitn|bata)\w*/.test(t)) return null;
   if (/\b(board|dashboard|today|overdue|hot leads)\b/.test(t)) return { tab: 'today' };
   if (/\b(add|new)\b.*\blead\b/.test(t)) return { tab: 'add' };
   if (/\bsettings\b/.test(t)) return { tab: 'settings' };
