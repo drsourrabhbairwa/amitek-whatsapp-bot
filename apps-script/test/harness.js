@@ -20,6 +20,7 @@ function makeSheet(name) {
       setValue: v => { while (rows.length < r) rows.push([]); rows[r - 1][c - 1] = v; }
     }),
     deleteRows: (start, n) => rows.splice(start - 1, n),
+    deleteRow: r => rows.splice(r - 1, 1),
     clearContents: () => rows.splice(0, rows.length)
   };
   return sh;

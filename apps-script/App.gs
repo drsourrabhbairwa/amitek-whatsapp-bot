@@ -11,6 +11,7 @@ function appPage_() {
 }
 
 var EDITABLE = ['Name', 'Business', 'Category', 'Tier', 'City', 'Requirement', 'Area sqft', 'Assigned To', 'Follow-up Note'];
+var BULK_FIELDS = ['Category', 'Tier', 'City', 'Assigned To'];
 var APP_SETTINGS = ['SEND_ENABLED', 'BOT_ENABLED', 'BOT_MODE', 'SALES_WHATSAPP', 'TEAM_ROUTING', 'BUSINESS_NUMBER'];
 
 /** Single entry point for the phone app: api(pin, action, argsJson) -> JSON string. */
@@ -88,6 +89,11 @@ function cleanRows_() {
   }).filter(function (x) { return x.lead['Phone']; });
 }
 function validPhone_(p) { return /^91\d{10}$/.test(String(p)); }
+function runningCampaigns_() {
+  return rowsAsObjects_(campaignsSheet_(), CAMPAIGN_COLS).some(function (c) {
+    return c['Status'] === 'Running' || c['Status'] === 'Scheduled';
+  });
+}
 
 function cleanReport_(rows) {
   var seen = {}, dupes = [], fixable = [], bad = [], noCity = 0, noBusiness = 0;
@@ -130,6 +136,64 @@ var APP_ACTIONS = {
     });
     return { fixed: fixed };
   },
+  deleteLead: function (a) {
+    var phone = normPhone_(a.phone);
+    var found = findLead_(phone);
+    if (!found) return { error: 'Lead not found' };
+    if (a.confirm !== true) return { error: 'Confirm before deleting' };
+    sheet_(SHEETS.leads).deleteRow(found.row);
+    logChange_(phone, 'app', 'deleted from the lead list');
+    return { message: 'Deleted' };
+  },
+
+  bulkEdit: function (a) {
+    var field = String(a.field || '');
+    var value = String(a.value == null ? '' : a.value).trim();
+    if (BULK_FIELDS.indexOf(field) < 0) return { error: 'This field cannot be changed in bulk' };
+    if (field === 'Category' && value && CATEGORIES.indexOf(value) < 0) return { error: 'Unknown category' };
+    if (field === 'Tier' && value && TIERS.indexOf(value) < 0) return { error: 'Unknown tier' };
+    var f = a.filter || {};
+    var want = { category: String(f.category || ''), city: String(f.city || '').toLowerCase().trim(), status: String(f.status || '') };
+    if (!want.category && !want.city && !want.status) return { error: 'Choose at least one filter' };
+    var rows = cleanRows_().filter(function (x) {
+      var l = x.lead;
+      if (want.category && String(l['Category']) !== want.category) return false;
+      if (want.city && String(l['City'] || '').toLowerCase().indexOf(want.city) < 0) return false;
+      if (want.status && String(l['Status']) !== want.status) return false;
+      return true;
+    });
+    if (a.preview !== false) {
+      return { count: rows.length, field: field, value: value, sample: rows.slice(0, 8).map(function (x) {
+        return { phone: String(x.lead['Phone']), name: x.lead['Name'] || x.lead['Business'] || '', from: String(x.lead[field] || '') };
+      }) };
+    }
+    if (rows.length > 1000) return { error: 'Narrow the filter: more than 1000 leads' };
+    rows.forEach(function (x) {
+      var u = {}; u[field] = value;
+      upsertLead_(String(x.lead['Phone']), u, 'app');
+    });
+    return { count: rows.length, message: 'Changed ' + rows.length + ' leads' };
+  },
+
+  importLeads: function (a) {
+    if (runningCampaigns_()) return { error: 'A campaign is running. Pause it in Send before importing, so new leads are not messaged by surprise.' };
+    var rows = Array.isArray(a.rows) ? a.rows : [];
+    if (rows.length > 300) return { error: 'Import up to 300 rows at a time' };
+    var known = {};
+    cleanRows_().forEach(function (x) { known[String(x.lead['Phone'])] = true; });
+    var out = { added: 0, skipped: 0, invalid: 0 };
+    rows.forEach(function (r) {
+      var phone = normPhone_(r.phone);
+      if (!validPhone_(phone)) { out.invalid++; return; }
+      if (known[phone]) { out.skipped++; return; }
+      var cat = CATEGORIES.indexOf(r.category) >= 0 ? r.category : 'Other';
+      upsertLead_(phone, { 'Name': r.name || '', 'Business': r.business || '', 'Category': cat, 'Tier': TIER_OF[cat] || 'To confirm',
+                           'City': r.city || '', 'State': r.state || '', 'Campaign': 'Imported' }, 'app');
+      known[phone] = true; out.added++;
+    });
+    return out;
+  },
+
   dashboard: function () {
     var now = new Date();
     var leads = allLeads_();
