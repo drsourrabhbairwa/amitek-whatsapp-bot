@@ -38,7 +38,7 @@ var TG_GUIDE = [
 ].join('\n');
 
 var TG_HELP_SYSTEM = [
-  'You help employees of Amitek Waterproofing (Jaipur) use the team Telegram bot and the WhatsApp sales bot.',
+  'You help employees of Amitek use the team Telegram bot and the WhatsApp sales bot.',
   'Answer in the language the employee uses (English, Hindi or Hinglish), short and practical, plain text, at most 8 lines.',
   'Only explain what the guide below says. If they ask for something the bot cannot do, say so and suggest asking the admin.',
   'Never invent prices, commands or features. Never share customer numbers.',

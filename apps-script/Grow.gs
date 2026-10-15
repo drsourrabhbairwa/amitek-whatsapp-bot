@@ -325,7 +325,7 @@ function campaignCounts_(id) {
 
 // ===================================================================== learning
 var LEARN_SYSTEM = [
-  'You help train the WhatsApp assistant of Amitek Waterproofing (Jaipur): coatings, waterproofing and construction chemicals,',
+  'You help train the WhatsApp assistant of Amitek: coatings, waterproofing and construction chemicals,',
   'customers are applicators, contractors, builders, architects, dealers and home owners, chats are in English, Hindi and Hinglish.',
   'From the material, write short knowledge notes the assistant should know when it replies to customers:',
   '- product facts and uses customers asked about, and the answers the Amitek team gave (team answers are the most reliable)',
@@ -483,7 +483,7 @@ function guessCategory_(l) {
 }
 
 var SORT_SYSTEM = [
-  'You sort leads of Amitek Waterproofing (Jaipur, India) into the kind of customer they are, so the right WhatsApp message goes to each.',
+  'You sort leads of Amitek (India) into the kind of customer they are, so the right WhatsApp message goes to each.',
   'Types:',
   '- Applicator: waterproofing or painting service providers and painters who apply products themselves',
   '- Contractor: civil or construction contractors, plumbers, engineers',
@@ -597,7 +597,7 @@ function applySort_(row, category) {
 // ===================================================================== pitch by category
 /** What each type of lead is offered: the opening template and what the bot steers the chat towards. Editable in Settings. */
 var COMMON_TEMPLATE = 'amitek_intro';  // one approved opener for everyone; the bot tailors the pitch to the category once they reply
-var COMMON_TEXT = 'Namaste {{1}} ji. This is Amitek Waterproofing, Jaipur (APP Paints Chemicals Pvt. Ltd.). We make waterproofing, coatings and construction chemicals, and for builders and architects we also offer seamless flooring, home automation and CCTV solutions. 25+ years of manufacturing and field expertise, 1000+ contractors and dealers across India and overseas, Govt. Approved Star Export House. Tell us in one line what work you do and how we can help you.';
+var COMMON_TEXT = 'Namaste {{1}} ji. This is Amitek (APP Paints Chemicals Pvt. Ltd.). We make waterproofing, coatings and construction chemicals, and for builders and architects we also offer seamless flooring, home automation and CCTV solutions. 25+ years of manufacturing and field expertise, 1000+ contractors and dealers across India and overseas, Govt. Approved Star Export House. Tell us in one line what work you do and how we can help you.';
 var PLAYBOOK_DEFAULTS = {
   'Applicator': { template: COMMON_TEMPLATE, text: COMMON_TEXT, pitch:
     'Main offer: third-party manufacturing (private label). Amitek manufactures waterproofing and coating products under the ' +
