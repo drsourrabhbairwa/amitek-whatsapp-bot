@@ -37,8 +37,8 @@ function api(pin, action, argsJson) {
   }
   // Slow AI actions only append rows, and the screens below only read, so none of them waits behind (or holds up)
   // an incoming WhatsApp message. Everything else that writes still takes the one script lock.
-  var lock = { sortRun: 1, learnChats: 1, learnText: 1,
-               dashboard: 1, search: 1, lead: 1, settings: 1, status: 1, cleanCheck: 1, tgStatus: 1 }[action]
+  var readOnly = !!{ dashboard: 1, search: 1, lead: 1, settings: 1, status: 1, cleanCheck: 1, tgStatus: 1 }[action];
+  var lock = (readOnly || { sortRun: 1, learnChats: 1, learnText: 1 }[action])
     ? { releaseLock: function () {} } : LockService.getScriptLock();
   if (lock.waitLock) lock.waitLock(25000);
   try {
@@ -50,6 +50,7 @@ function api(pin, action, argsJson) {
     console.error('app ' + action + ' failed: ' + (err && err.stack));
     return JSON.stringify({ error: String(err && err.message || err) });
   } finally {
+    if (!readOnly) dropLeadsCache_();   // something may have changed a lead
     lock.releaseLock();
   }
 }
@@ -62,6 +63,112 @@ function allLeads_() {
   return sh.getRange(2, 1, sh.getLastRow() - 1, LEAD_COLS.length).getValues().map(function (r) {
     var l = {}; LEAD_COLS.forEach(function (c, j) { l[c] = r[j]; }); return l;
   }).filter(function (l) { return l['Phone']; });
+}
+
+/** A short-lived copy of the lead list for the read-only screens (dashboard, search, assistant), so each tap does not
+ *  re-read the whole sheet. The cache holds about 100 KB per key, so the list is stored in pieces. Anything that
+ *  changes leads calls dropLeadsCache_(); a hand-edit made directly in the sheet shows up within LEADS_CACHE_SECONDS. */
+var LEADS_CACHE_SECONDS = 25;
+var LEADS_CACHE_PIECE = 30000;   // characters; multi-byte text can take 3 bytes each, so this stays under 100 KB
+var LEADS_CACHE_MAX_PIECES = 30;
+function reviveDates_(k, v) {
+  return typeof v === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(v) ? new Date(v) : v;
+}
+function dropLeadsCache_() {
+  try { CacheService.getScriptCache().put('leads_n', '0', 1); } catch (err) { /* the cache is only a speed-up */ }
+}
+function allLeadsCached_() {
+  var cache = CacheService.getScriptCache();
+  try {
+    var n = Number(cache.get('leads_n') || 0), parts = [];
+    for (var i = 0; i < n; i++) {
+      var p = cache.get('leads_' + i);
+      if (p === null || p === undefined) { parts = null; break; }
+      parts.push(p);
+    }
+    if (n > 0 && parts) return JSON.parse(parts.join(''), reviveDates_);
+  } catch (err) { /* fall through and read the sheet */ }
+  var leads = allLeads_();
+  try {
+    var json = JSON.stringify(leads), count = Math.ceil(json.length / LEADS_CACHE_PIECE);
+    if (count > 0 && count <= LEADS_CACHE_MAX_PIECES) {
+      for (var j = 0; j < count; j++) cache.put('leads_' + j, json.slice(j * LEADS_CACHE_PIECE, (j + 1) * LEADS_CACHE_PIECE), LEADS_CACHE_SECONDS + 10);
+      cache.put('leads_n', String(count), LEADS_CACHE_SECONDS);   // expires first, so a half-expired set is never read
+    }
+  } catch (err) { /* too big or the cache is full: just run uncached */ }
+  return leads;
+}
+
+var COUNTRY_CODES = { '91': 'India', '234': 'Nigeria', '254': 'Kenya', '256': 'Uganda', '233': 'Ghana', '27': 'South Africa',
+  '63': 'Philippines', '971': 'UAE', '966': 'Saudi Arabia', '255': 'Tanzania', '260': 'Zambia', '263': 'Zimbabwe', '20': 'Egypt',
+  '92': 'Pakistan', '880': 'Bangladesh', '977': 'Nepal', '94': 'Sri Lanka', '44': 'UK', '65': 'Singapore', '60': 'Malaysia',
+  '62': 'Indonesia', '974': 'Qatar', '968': 'Oman', '965': 'Kuwait', '973': 'Bahrain' };
+function countryOf_(phone) {
+  var p = String(phone || '');
+  return COUNTRY_CODES[p.slice(0, 3)] || COUNTRY_CODES[p.slice(0, 2)] || 'Other';
+}
+function countBy_(leads, fn) {
+  var m = {};
+  leads.forEach(function (l) { var k = fn(l) || '(blank)'; m[k] = (m[k] || 0) + 1; });
+  return Object.keys(m).map(function (k) { return [k, m[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
+}
+function countLine_(pairs, max) {
+  return pairs.slice(0, max || 8).map(function (p) { return p[0] + ' ' + p[1]; }).join(', ');
+}
+function leadLine_(l) {
+  var next = asDate_(l['Next Follow-up']), lastIn = asDate_(l['Last Inbound']);
+  return [String(l['Name'] || l['Business'] || 'Lead'), l['Business'] && l['Name'] ? '(' + l['Business'] + ')' : '',
+    '+' + l['Phone'], l['City'] || '', l['Category'], 'status ' + (l['Status'] || '-'), 'stage ' + (l['Stage'] || '-'),
+    next ? 'follow-up ' + fmt_(next) : '', lastIn ? 'last wrote ' + fmt_(lastIn) : 'never wrote',
+    l['Requirement'] ? 'wants: ' + String(l['Requirement']).slice(0, 80) : ''].filter(String).join(' | ');
+}
+/** Totals over the WHOLE lead sheet (closed and opted-out leads too), plus the leads the question is about.
+ *  `cats` limits it to a teammate's own categories, like the rest of the assistant. */
+function leadOverview_(text, cats) {
+  var all = allLeadsCached_().filter(function (l) { return !cats || !cats.length || cats.indexOf(String(l['Category'] || 'Other')) >= 0; });
+  var now = Date.now(), week = now - 7 * 86400000;
+  var out = ['Whole lead sheet: ' + all.length + ' leads in total.',
+    'By status: ' + countLine_(countBy_(all, function (l) { return l['Status']; }), 10),
+    'By category: ' + countLine_(countBy_(all, function (l) { return l['Category']; }), 10),
+    'By country: ' + countLine_(countBy_(all, function (l) { return countryOf_(l['Phone']); }), 10),
+    'Opted out: ' + all.filter(function (l) { return l['Opt-in'] === 'Opted out'; }).length +
+      '. Wrote to us in the last 7 days: ' + all.filter(function (l) { var d = asDate_(l['Last Inbound']); return d && d >= week; }).length +
+      '. Never wrote: ' + all.filter(function (l) { return !asDate_(l['Last Inbound']); }).length +
+      '. Added in the last 7 days: ' + all.filter(function (l) { var d = asDate_(l['Created']); return d && d >= week; }).length + '.'];
+  var q = String(text || '').toLowerCase(), picked = [], why = [];
+  var digits = (q.match(/\d[\d\s\-+]{5,}\d/g) || []).map(function (s) { return s.replace(/\D/g, ''); }).filter(function (s) { return s.length >= 6; });
+  digits.forEach(function (d) {
+    var hit = all.filter(function (l) { return String(l['Phone']).indexOf(d) >= 0; });
+    why.push(hit.length ? '' : 'No lead in the sheet has a number containing ' + d + '.');
+    picked = picked.concat(hit);
+  });
+  Object.keys(COUNTRY_CODES).forEach(function (code) {
+    var name = COUNTRY_CODES[code];
+    if (q.indexOf(name.toLowerCase()) < 0) return;
+    var hit = all.filter(function (l) { return countryOf_(l['Phone']) === name; });
+    why.push(name + ': ' + hit.length + ' leads (' + countLine_(countBy_(hit, function (l) { return l['Status']; }), 6) + ').');
+    picked = picked.concat(hit.slice(0, 5));
+  });
+  CATEGORIES.forEach(function (c) {
+    if (q.indexOf(c.toLowerCase()) < 0) return;
+    var hit = all.filter(function (l) { return l['Category'] === c; });
+    why.push(c + ': ' + hit.length + ' leads (' + countLine_(countBy_(hit, function (l) { return l['Status']; }), 6) + ').');
+    picked = picked.concat(hit.slice(0, 5));
+  });
+  var cities = {};
+  all.forEach(function (l) { var c = String(l['City'] || '').trim(); if (c.length >= 3) cities[c.toLowerCase()] = c; });
+  Object.keys(cities).forEach(function (k) {
+    if (q.indexOf(k) < 0) return;
+    var hit = all.filter(function (l) { return String(l['City'] || '').trim().toLowerCase() === k; });
+    why.push('City ' + cities[k] + ': ' + hit.length + ' leads (' + countLine_(countBy_(hit, function (l) { return l['Status']; }), 6) + ').');
+    picked = picked.concat(hit.slice(0, 5));
+  });
+  why = why.filter(String);
+  if (why.length) out.push('About this question: ' + why.join(' '));
+  var seen = {}, lines = [];
+  picked.forEach(function (l) { if (!seen[l['Phone']] && lines.length < 8) { seen[l['Phone']] = 1; lines.push('- ' + leadLine_(l)); } });
+  if (lines.length) out.push('Matching leads (up to 8):\n' + lines.join('\n'));
+  return out.join('\n');
 }
 
 function need_(l, now) {
@@ -199,7 +306,7 @@ var APP_ACTIONS = {
 
   dashboard: function () {
     var now = new Date();
-    var leads = allLeads_();
+    var leads = allLeadsCached_();
     var active = leads.filter(function (l) { return l['Status'] && l['Status'] !== 'New' && CLOSED.indexOf(l['Status']) < 0; });
     var cards = active.map(function (l) { return card_(l, now); });
     function pick(need) {
@@ -227,7 +334,7 @@ var APP_ACTIONS = {
     var digits = q.replace(/\D/g, '');
     var now = new Date();
     var status = a.status || '';
-    var out = allLeads_().filter(function (l) {
+    var out = allLeadsCached_().filter(function (l) {
       if (status && l['Status'] !== status) return false;
       if (!q) return true;
       if (digits.length >= 4 && String(l['Phone']).indexOf(digits) >= 0) return true;

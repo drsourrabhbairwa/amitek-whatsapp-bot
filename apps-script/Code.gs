@@ -165,6 +165,7 @@ function upsertLead_(phone, fields, actor) {
   } else {
     sh.appendRow(values[0]);
   }
+  if (typeof dropLeadsCache_ === 'function') dropLeadsCache_();
   if (changes.length) logChange_(phone, actor || 'system', changes.join('; '));
   return lead;
 }
@@ -905,10 +906,13 @@ function hourlyCheck() {
  *  teammate, grounded only in their own current lead snapshot (never invented numbers/names). */
 function assistantFallback_(text, from) {
   try {
-    var snapshot = pendingReport_(categoriesOf_(from));
+    var cats = categoriesOf_(from);
+    var snapshot = pendingReport_(cats);
+    if (typeof leadOverview_ === 'function') snapshot += '\n\n' + leadOverview_(text, cats);
     var sys = [
       'You are Amitek\'s internal ops assistant, chatting with the sales team inside their own app (never the customer).',
-      'Answer only from the lead snapshot below - never invent names, numbers, dates or details that are not in it.',
+      'Answer only from the snapshot, the whole-sheet totals and the matching leads below - never invent names, numbers, dates or details that are not in them.',
+      'The whole-sheet totals cover EVERY lead (closed and opted-out too); the snapshot only covers active ones. If a number or lead is in neither, say it is not in the sheet.',
       'You cannot perform actions yourself here. If they ask to do something, tell them the exact command to type:',
       'DONE <phone>, LATER <phone> [days], WON <phone>, LOST <phone> reason, LIST, CAMPAIGNS,',
       'or describe who and when for a campaign, e.g. "applicators ko monday 11 baje message bhejo".',

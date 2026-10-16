@@ -507,6 +507,52 @@ const tests = {
     assert(sentSys.includes('ops assistant'), sentSys);
     assert(sentSys.includes('Amitek leads'), 'grounded in the real lead snapshot');
   },
+  'read-only screens use a short-lived copy of the lead list, and any change drops it'() {
+    const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES } }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    const sh = env.sheets['Leads'];
+    const row = (phone, f) => { const h = sh.rows[0]; sh.rows.push(h.map(c => c === 'Phone' ? phone : (f[c] !== undefined ? f[c] : (c === 'Status' ? 'New' : ''))));};
+    row('919811110031', { Name: 'Asha', City: 'Jaipur', Status: 'Hot', 'Next Follow-up': new Date('2026-10-20T10:00:00Z') });
+    let d = api('dashboard');
+    assert.strictEqual(d.counts.total, 1);
+    assert.strictEqual(d.hot.length, 1);
+    row('919811110032', { Name: 'Ravi', Status: 'Hot' });            // typed into the sheet by hand: not seen until the copy expires
+    assert.strictEqual(api('dashboard').counts.total, 1, 'second call is served from the copy');
+    assert.strictEqual(api('search', { q: 'asha' }).total, 1);
+    assert.strictEqual(api('act', { phone: '919811110031', cmd: 'DONE', note: 'called' }).message.length > 0, true);
+    assert.strictEqual(api('dashboard').counts.total, 2, 'a change from the app drops the copy');
+    row('919811110033', { Name: 'Meena', Status: 'Hot' });
+    env.ctx.upsertLead_('919811110034', { Name: 'Kiran' }, 'bot');   // a customer message changes a lead
+    assert.strictEqual(api('dashboard').counts.total, 4, 'a change from the bot drops the copy too');
+    d = api('search', { q: 'asha' });
+    assert.strictEqual(d.leads[0].name, 'Asha');
+    assert(d.leads[0].next === null || typeof d.leads[0].next === 'string');
+  },
+  'assistant knows the whole lead sheet, not only the active snapshot'() {
+    const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES } }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    const sh = env.sheets['Leads'];
+    const row = (phone, f) => { const h = sh.rows[0]; sh.rows.push(h.map(c => c === 'Phone' ? phone : (f[c] !== undefined ? f[c] : (c === 'Status' ? 'New' : ''))));};
+    row('919811110041', { Name: 'Vikas', City: 'Jaipur', Status: 'Hot', Category: 'Dealer' });
+    row('2348011110042', { Name: 'Chidi', Status: 'Replied' });
+    row('2348011110043', { Name: 'Ngozi', Status: 'New' });
+    row('2347011110044', { Name: 'Emeka', Status: 'Lost', 'Opt-in': 'Opted out' });
+    row('256700000045', { Name: 'Okello', Status: 'Replied' });
+    env.claude.push(say('You have 5 leads in total, 3 of them in Nigeria.'));
+    const r = api('assistant', { text: 'how many nigeria leads do we have in total, and what about 9811110041' });
+    assert.strictEqual(r.reply, 'You have 5 leads in total, 3 of them in Nigeria.');
+    const sys = env.claudeCalls[env.claudeCalls.length - 1].body.system[0].text;
+    assert(sys.includes('Whole lead sheet: 5 leads in total'), sys);
+    assert(sys.includes('Nigeria 3'), 'country totals are in the prompt');
+    assert(sys.includes('Opted out: 1'), 'closed and opted-out leads count too');
+    assert(sys.includes('Nigeria: 3 leads'), 'the country the question names is spelled out');
+    assert(sys.includes('Vikas') && sys.includes('+919811110041'), 'the lead whose number was typed is attached');
+    assert(sys.includes('EVERY lead'), 'told that the totals cover the whole sheet');
+    // a number that is not in the sheet is said so, not guessed
+    env.claude.push(say('That number is not in the sheet.'));
+    api('assistant', { text: 'what about 9660031171' });
+    assert(env.claudeCalls[env.claudeCalls.length - 1].body.system[0].text.includes('No lead in the sheet has a number containing 9660031171'));
+  },
   'campaign pauses itself when WhatsApp refuses the template'() {
     const env = load(BASE);
     const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
