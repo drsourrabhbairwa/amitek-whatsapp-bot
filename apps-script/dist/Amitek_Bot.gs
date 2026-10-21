@@ -54,6 +54,11 @@ var DEFAULT_SETTINGS = {
   UNANSWERED_ALERT_MINUTES: '30',
   HUMAN_TAKEOVER_HOURS: '12',
   QUIET_DAYS: '3',
+  WORK_HOURS: '9-20',                // team reminders go out only between these India hours; urgent (hot) alerts ignore it
+  REMINDER_MINUTES: '20',            // gap between reminders to the team for a lead nobody has contacted
+  REMINDER_MAX: '6',                 // reminders per lead, then the main salesperson is told once
+  ALERT_TEMPLATE: 'team_lead_alert', // type none to turn off. Utility template used to reach a team member whose 24-hour WhatsApp window is closed ({{1}} team, {{2}} customer, {{3}} number)
+  ALERT_TEMPLATE_LANG: 'en',
   DAILY_SUMMARY_HOUR: '9',
   WA_API_URL: 'https://crmapi.bluetickapi.com/api/meta',
   WA_API_VERSION: 'v19.0',
@@ -712,7 +717,12 @@ function handleEcho_(e) {
 function handleInbound_(m) {
   if (!m.phone) return;
   if (isTeam_(m.phone)) {
-    if (addMessage_(m.phone, 'in', 'sales', m.text, m.id)) waText_(m.phone, salesCommand_(m.text, m.phone));
+    if (addMessage_(m.phone, 'in', 'sales', m.text, m.id)) {
+      var tword = String(m.text).trim().toLowerCase().replace(/[.!]+$/, '');
+      var tnote = teamHeardFrom_(m.phone, tword);
+      if (tnote) waText_(m.phone, tnote);
+      else { teamFlushHeld_(m.phone); waText_(m.phone, salesCommand_(m.text, m.phone)); }
+    }
     return;
   }
   if (!addMessage_(m.phone, 'in', 'lead', m.text, m.id)) return;  // duplicate delivery
@@ -834,11 +844,99 @@ function categoriesOf_(phone) {
   if ((r['All'] || []).indexOf(phone) >= 0) return [];
   return Object.keys(r).filter(function (c) { return r[c].indexOf(phone) >= 0; });
 }
-function alertLead_(lead, text) {
+function alertLead_(lead, text, urgent) {
   if (typeof tgAlert_ === 'function') tgAlert_(text);
   var to = recipientsFor_(lead);
   if (!to.length) { console.warn('No team number set; alert: ' + text); return; }
-  to.forEach(function (p) { waText_(p, text); });
+  to.forEach(function (p) { teamPing_(p, text, lead, urgent); });
+}
+
+// ---- reaching team members on WhatsApp: working hours, the 24-hour window, and the Utility-template fallback
+function workOpen_(now) {
+  var m = String(setting_('WORK_HOURS') || '').match(/^(\d{1,2})\s*-\s*(\d{1,2})$/);
+  if (!m) return true;
+  var from = parseInt(m[1], 10), to = parseInt(m[2], 10);
+  if (from >= to) return true;
+  var h = new Date((now || new Date(Date.now())).getTime() + IST_MS).getUTCHours();
+  return h >= from && h < to;
+}
+function teamProp_(key) { return Number(PropertiesService.getScriptProperties().getProperty(key) || 0); }
+function teamSet_(key, v) { PropertiesService.getScriptProperties().setProperty(key, String(v)); }
+function teamWindowOpen_(phone) { return Date.now() - teamProp_('TEAMWIN_' + phone) < 23.5 * 3600000; }
+function teamStopped_(phone) { return teamProp_('TEAMSTOP_' + phone) === 1; }
+function teamPaused_(phone) { return teamProp_('TEAMPAUSE_' + phone) > Date.now(); }
+
+function waTemplate_(to, name, lang, params) {
+  return waPost_({ messaging_product: 'whatsapp', recipient_type: 'individual', to: to, type: 'template',
+    template: { name: name, language: { code: lang || 'en' },
+      components: [{ type: 'body', parameters: params.map(function (t) { return { type: 'text', text: String(t) }; }) }] } });
+}
+
+/** One WhatsApp message to a team member. Normal hours only, unless urgent. Free text inside their 24-hour window;
+ *  outside it the approved Utility template goes first and the full text is held until they reply. */
+function teamPing_(to, text, lead, urgent) {
+  if (teamStopped_(to)) return false;
+  if (!urgent && !workOpen_()) return false;
+  if (teamWindowOpen_(to)) return !!waText_(to, text);
+  var tpl = setting_('ALERT_TEMPLATE');
+  if (!tpl || tpl === 'none' || !lead) return !!waText_(to, text);
+  var props = PropertiesService.getScriptProperties();
+  var held = []; try { held = JSON.parse(props.getProperty('TEAMPEND_' + to) || '[]'); } catch (err) { held = []; }
+  held.push(String(text).slice(0, 900));
+  props.setProperty('TEAMPEND_' + to, JSON.stringify(held.slice(-5)));
+  var id = waTemplate_(to, tpl, setting_('ALERT_TEMPLATE_LANG'),
+      ['team', lead['Name'] || lead['Business'] || 'a customer', String(lead['Phone'] || '')]);
+  return !!id;
+}
+
+/** A team member wrote in: their 24-hour window is open, held alerts are delivered, reminders rest for an hour. */
+function teamHeardFrom_(phone, word) {
+  teamSet_('TEAMWIN_' + phone, Date.now());
+  teamSet_('TEAMPAUSE_' + phone, Date.now() + 3600000);
+  if (word === 'stop') { teamSet_('TEAMSTOP_' + phone, 1); return 'Alerts stopped for this number. Send START to get them again.'; }
+  if (word === 'start') { teamSet_('TEAMSTOP_' + phone, 0); return 'Alerts are on again. Reply DONE <number> after each call.'; }
+  if (teamStopped_(phone)) teamSet_('TEAMSTOP_' + phone, 0);
+  return '';
+}
+function teamFlushHeld_(phone) {
+  var props = PropertiesService.getScriptProperties(), held = [];
+  try { held = JSON.parse(props.getProperty('TEAMPEND_' + phone) || '[]'); } catch (err) { held = []; }
+  if (!held.length) return;
+  props.deleteProperty('TEAMPEND_' + phone);
+  waText_(phone, held.join('\n\n'));
+}
+
+/** Every 10 minutes: a handed-over lead nobody has contacted gets a reminder every REMINDER_MINUTES, up to REMINDER_MAX,
+ *  in working hours (hot leads at any hour). After the last one the main salesperson is told once. */
+function reminderTick() {
+  var now = new Date(Date.now()), open = workOpen_(now), props = PropertiesService.getScriptProperties();
+  var st = {}; try { st = JSON.parse(props.getProperty('REMINDERS') || '{}') || {}; } catch (err) { st = {}; }
+  var gap = settingNum_('REMINDER_MINUTES') * 60000, max = settingNum_('REMINDER_MAX'), sent = 0, escalated = 0;
+  activeLeads_().forEach(function (l) {
+    var phone = String(l['Phone']), handoff = asDate_(l['Handoff At']), human = asDate_(l['Last Human Contact']);
+    if (['Hot', 'Qualified'].indexOf(String(l['Status'])) < 0 || !handoff) return;
+    if (human && human >= handoff) { delete st[phone]; return; }
+    var urgent = l['Status'] === 'Hot';
+    if (!open && !urgent) return;
+    var s = st[phone];
+    if (!s || s.since !== handoff.getTime()) s = st[phone] = { since: handoff.getTime(), n: 0, at: handoff.getTime() };
+    if (now.getTime() - s.at < gap) return;
+    if (s.n >= max) {
+      if (!s.esc) {
+        s.esc = 1; escalated++;
+        var main = normPhone_(setting_('SALES_WHATSAPP'));
+        if (main) teamPing_(main, '🚨 Nobody has contacted ' + label_(l) + ' after ' + max + ' reminders. Please call them or reassign.', l, true);
+      }
+      return;
+    }
+    var text = '⏰ *Reminder ' + (s.n + 1) + '/' + max + '*: nobody has contacted ' + label_(l) + ' yet.\n' +
+               (l['Follow-up Note'] ? l['Follow-up Note'] + '\n' : '') + 'Reply DONE ' + String(l['Phone']).slice(-10) + ' after you call.';
+    var any = false;
+    recipientsFor_(l).forEach(function (p) { if (!teamPaused_(p) && teamPing_(p, text, l, urgent)) any = true; });
+    if (any) { s.n++; s.at = now.getTime(); sent++; }
+  });
+  props.setProperty('REMINDERS', JSON.stringify(st));
+  return { reminders: sent, escalated: escalated };
 }
 
 function notifySales_(lead, h) {
@@ -846,7 +944,7 @@ function notifySales_(lead, h) {
       .filter(function (x) { return x && x !== 'Other'; }).join(' | ');
   alertLead_(lead, '*' + (h.priority === 'hot' ? '🔥 HOT LEAD' : '📋 New lead for follow-up') + '*\n' + label_(lead) +
               (details ? '\n' + details : '') + '\n\n' + h.summary + '\n_Why now:_ ' + h.reason +
-              '\n\nReply DONE ' + String(lead['Phone']).slice(-10) + ' after you call.');
+              '\n\nReply DONE ' + String(lead['Phone']).slice(-10) + ' after you call.', h.priority === 'hot');
 }
 
 // ===================================================================== tracking
@@ -861,14 +959,14 @@ function activeLeads_() {
 
 /** Hourly: unanswered chats, hot leads not contacted, follow-ups due, quiet leads. */
 function hourlyCheck() {
-  var now = new Date();
+  var now = new Date(), open = workOpen_(now);
   var unanswered = [], hot = [], due = [];
   activeLeads_().forEach(function (l) {
     var phone = String(l['Phone']);
     var lastIn = asDate_(l['Last Inbound']), lastOut = asDate_(l['Last Outbound']), human = asDate_(l['Last Human Contact']);
     var answered = [lastOut, human].filter(Boolean).sort(function (a, b) { return b - a; })[0] || null;
 
-    if (lastIn && (!answered || answered < lastIn) && now - lastIn >= settingNum_('UNANSWERED_ALERT_MINUTES') * 60000) {
+    if (open && lastIn && (!answered || answered < lastIn) && now - lastIn >= settingNum_('UNANSWERED_ALERT_MINUTES') * 60000) {
       var ua = asDate_(l['Unanswered Alerted']);
       if (!ua || ua < lastIn) { unanswered.push(l); upsertLead_(phone, { 'Unanswered Alerted': now }, 'system'); }
     }
@@ -880,6 +978,7 @@ function hourlyCheck() {
       }
     }
     var nf = asDate_(l['Next Follow-up']);
+    if (!open) return;
     if (nf && nf <= now) {
       var fa = asDate_(l['Followup Alerted']);
       if (!fa || fa < nf) { due.push(l); upsertLead_(phone, { 'Followup Alerted': now }, 'system'); }
@@ -903,7 +1002,7 @@ function hourlyCheck() {
     if (b.due.length) parts.push('*📅 Follow-up due now:*\n' + b.due.map(function (l) {
       return '• ' + label_(l) + (l['Follow-up Note'] ? ' - ' + l['Follow-up Note'] : '');
     }).join('\n'));
-    if (parts.length) waText_(p, parts.join('\n\n') + '\n\n_Reply DONE <number> after you call. HELP for commands._');
+    if (parts.length) teamPing_(p, parts.join('\n\n') + '\n\n_Reply DONE <number> after you call. HELP for commands._', box[p].hot[0] || box[p].unanswered[0] || box[p].due[0], !!b.hot.length);
   });
   refreshBoard_();
   return { unanswered: unanswered.length, hot_overdue: hot.length, follow_ups_due: due.length };
@@ -1070,9 +1169,10 @@ function setup() {
   if (!props.getProperty('WEBHOOK_SECRET')) props.setProperty('WEBHOOK_SECRET', Utilities.getUuid().replace(/-/g, ''));
 
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (['hourlyCheck', 'dailySummary'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
+    if (['hourlyCheck', 'dailySummary', 'reminderTick'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('hourlyCheck').timeBased().everyHours(1).create();
+  ScriptApp.newTrigger('reminderTick').timeBased().everyMinutes(10).create();
   ScriptApp.newTrigger('dailySummary').timeBased().atHour(settingNum_('DAILY_SUMMARY_HOUR')).everyDays(1)
       .inTimezone('Asia/Kolkata').create();
   refreshBoard_();

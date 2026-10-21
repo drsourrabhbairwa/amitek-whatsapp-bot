@@ -98,7 +98,7 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
   ctx.setup();
   // apply test settings to the Settings tab
   const st = sheets['Settings'];
-  settings = Object.assign({ CAMPAIGN_HOURS: '0-24' }, settings);  // tests run at any hour
+  settings = Object.assign({ CAMPAIGN_HOURS: '0-24', WORK_HOURS: '0-24', ALERT_TEMPLATE: 'none' }, settings);  // tests run at any hour
   Object.keys(settings).forEach(k => {
     const row = st.rows.find(r => r[0] === k);
     row[1] = settings[k];
