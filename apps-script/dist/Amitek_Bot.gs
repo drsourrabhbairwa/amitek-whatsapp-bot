@@ -56,6 +56,8 @@ var DEFAULT_SETTINGS = {
   QUIET_DAYS: '3',
   WORK_HOURS: '9-20',                // team reminders go out only between these India hours; urgent (hot) alerts ignore it
   REMINDER_MINUTES: '20',            // gap between reminders to the team for a lead nobody has contacted
+  FOLLOWUP_STEPS: '',                // follow-ups for leads who never replied: "days:template, days:template", e.g. "3:amitek_followup1, 8:amitek_followup2" (blank = off, at most 4)
+  FOLLOWUP_LANG: 'en',               // language of the follow-up templates (each takes just {{1}})
   REMINDER_MAX: '6',                 // reminders per lead, then the main salesperson is told once
   ALERT_TEMPLATE: 'team_lead_alert', // type none to turn off. Utility template used to reach a team member whose 24-hour WhatsApp window is closed ({{1}} team, {{2}} customer, {{3}} number)
   ALERT_TEMPLATE_LANG: 'en',
@@ -959,6 +961,7 @@ function activeLeads_() {
 
 /** Hourly: unanswered chats, hot leads not contacted, follow-ups due, quiet leads. */
 function hourlyCheck() {
+  try { followupTick_(); } catch (err) { console.error('followupTick_ failed: ' + err); }
   var now = new Date(), open = workOpen_(now);
   var unanswered = [], hot = [], due = [];
   activeLeads_().forEach(function (l) {
@@ -2908,6 +2911,79 @@ var GROW_ACTIONS = {
     return { message: a.on ? 'The bot will look for new things every Monday' : 'Weekly learning is off' };
   }
 };
+
+// ===================================================================== follow-ups
+/** FOLLOWUP_STEPS "3:tplA, 8:tplB" -> [{days:3, template:'tplA'}, ...]. Steps after the first message; at most 4. */
+function followupSteps_() {
+  var out = [];
+  String(growSetting_('FOLLOWUP_STEPS') || '').split(',').forEach(function (p) {
+    var m = /^\s*(\d{1,3})\s*:\s*([A-Za-z0-9_]{1,512})\s*$/.exec(p);
+    if (m && out.length < 4) out.push({ days: parseInt(m[1], 10), template: m[2] });
+  });
+  return out;
+}
+
+/**
+ * Hourly: a lead who got a campaign message and never replied gets the next follow-up template once its gap has passed
+ * (gap counted from our last message to them). A reply, STOP, a team contact, won/lost or "do not message" ends it.
+ * Shares the daily limit and the sending hours with campaigns. Each step is logged as FU1, FU2, ... in Campaign Log.
+ */
+function followupTick_() {
+  var steps = followupSteps_();
+  if (!steps.length) return { sent: 0, reason: 'off' };
+  if (!sendEnabled_()) return { sent: 0, reason: 'test mode' };
+  if (!campaignOpen_()) return { sent: 0, reason: 'outside sending hours' };
+  var props = PropertiesService.getScriptProperties();
+  if (Date.now() < Number(props.getProperty('FOLLOWUP_HOLD') || 0)) return { sent: 0, reason: 'on hold after an error' };
+  var room = Number(growSetting_('CAMPAIGN_DAILY_LIMIT')) - sentLast24h_();
+  if (room <= 0) return { sent: 0, reason: 'daily limit' };
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return { sent: 0, reason: 'busy' };
+  try {
+    var lang = String(growSetting_('FOLLOWUP_LANG') || 'en').trim();
+    var done = {};
+    rowsAsObjects_(campaignLogSheet_(), CAMPAIGN_LOG_COLS).forEach(function (r) {
+      var m = /^FU(\d+)$/.exec(String(r['Campaign ID']));
+      if (m && r['Result'] === 'sent') { var n = parseInt(m[1], 10), ph = String(r['Phone']); if (!done[ph] || done[ph] < n) done[ph] = n; }
+    });
+    var team = teamPhones_(), now = Date.now();
+    var due = [];
+    leadsFull_().forEach(function (l) {
+      var phone = String(l['Phone'] || '');
+      if (!phone || campaignBlock_(l, team)) return;
+      if ('Can Message' in l && String(l['Can Message']).toLowerCase() === 'no') return;
+      if (String(l['Status']) !== 'Contacted' || !l['Campaign']) return;
+      if (asDate_(l['Last Inbound']) || asDate_(l['Last Human Contact'])) return;   // they answered, or the team is on it
+      var lo = asDate_(l['Last Outbound']), n = done[phone] || 0;
+      if (!lo || n >= steps.length || now - lo.getTime() < steps[n].days * 86400000) return;
+      due.push({ lead: l, n: n, at: lo.getTime() });
+    });
+    due.sort(function (a, b) { return a.at - b.at; });
+    var batch = due.slice(0, Math.min(room, Number(growSetting_('CAMPAIGN_BATCH')) || 40));
+    var log = campaignLogSheet_(), sent = 0, failed = 0;
+    for (var i = 0; i < batch.length; i++) {
+      var d = batch[i], phone2 = String(d.lead['Phone']), st = steps[d.n];
+      lastWaError_ = '';
+      var id = waPost_(templateBody_({ 'Template': st.template, 'Language': lang, 'Uses Name': 'yes', 'Template Vars': '' }, d.lead));
+      if (id) {
+        sent++;
+        log.appendRow([new Date(), 'FU' + (d.n + 1), phone2, 'sent', id === 'sent' ? '' : id]);
+        addMessage_(phone2, 'out', 'campaign', '[Follow-up ' + (d.n + 1) + ': ' + st.template + ']', id === 'sent' ? '' : id);
+        upsertLead_(phone2, { 'Last Outbound': new Date() }, 'followup');
+      } else {
+        failed++;
+        log.appendRow([new Date(), 'FU' + (d.n + 1), phone2, 'failed', String(lastWaError_).slice(0, 300)]);
+        // a refused template (not approved, wrong name or language) would fail for everyone: stop for a day and tell the team
+        props.setProperty('FOLLOWUP_HOLD', String(Date.now() + 24 * 3600000));
+        alertSales_('⚠️ Follow-up "' + st.template + '" was refused by WhatsApp, so follow-ups are paused for a day.\n' +
+                    String(lastWaError_).slice(0, 200) + '\nCheck the template name and that it is APPROVED in BlueTick (Settings: FOLLOWUP_STEPS).');
+        break;
+      }
+    }
+    if (sent) alertSales_('🔁 Follow-ups sent: ' + sent + ' (to people who have not replied).');
+    return { sent: sent, failed: failed };
+  } finally { lock.releaseLock(); }
+}
 
 
 // ===================================================================== Telegram: the team's own bot

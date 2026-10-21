@@ -1143,6 +1143,49 @@ const tests = {
     assert(/Bot stays quiet/.test(env.ctx.planText_(p)));
     assert(!env.ctx.makePlan_('applicators ko message bhejo').quiet);
   }
+  ,
+  'follow-ups: people who never replied get the next template after the gap; a reply, STOP or the team ends it; a refused template pauses it'() {
+    const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES, CAMPAIGN_HOURS: '0-24',
+      FOLLOWUP_STEPS: '3:fu_one, 8:fu_two', FOLLOWUP_LANG: 'en', CAMPAIGN_DAILY_LIMIT: '100' } }));
+    const sh = env.sheets['Leads'];
+    const day = n => new Date(Date.now() - n * 86400000);
+    const row = (phone, f) => sh.rows.push(sh.rows[0].map(c => c === 'Phone' ? phone : (f[c] !== undefined ? f[c] : '')));
+    const base = { Status: 'Contacted', Campaign: 'Jaipur 50', City: 'Jaipur' };
+    row('919822220001', Object.assign({}, base, { 'Last Outbound': day(4) }));                       // due: step 1
+    row('919822220002', Object.assign({}, base, { 'Last Outbound': day(1) }));                       // too early
+    row('919822220003', Object.assign({}, base, { 'Last Outbound': day(4), 'Last Inbound': day(2) })); // replied
+    row('919822220004', Object.assign({}, base, { 'Last Outbound': day(4), 'Opt-in': 'Opted out' }));  // said STOP
+    row('919822220005', Object.assign({}, base, { 'Last Outbound': day(9) }));                       // already had step 1: due step 2
+    row('919822220006', Object.assign({}, base, { 'Last Outbound': day(4), 'Last Human Contact': day(1) })); // team is on it
+    row('919822220007', { Status: 'New', 'Last Outbound': day(4) });                                 // never campaigned
+    env.ctx.campaignLogSheet_().appendRow([day(6), 'FU1', '919822220005', 'sent', '']);
+    const r = env.ctx.followupTick_();
+    assert.strictEqual(r.sent, 2, JSON.stringify(r));
+    const by = {}; env.sent.filter(m => m.body.type === 'template').forEach(m => { by[m.body.to] = m.body.template; });
+    assert.strictEqual(by['919822220001'].name, 'fu_one');
+    assert.strictEqual(by['919822220005'].name, 'fu_two');
+    assert.strictEqual(by['919822220001'].language.code, 'en');
+    assert.strictEqual(by['919822220001'].components[0].parameters[0].text, "Sir/Ma'am");
+    assert.deepStrictEqual(Object.keys(by).sort(), ['919822220001', '919822220005']);
+    assert.strictEqual(env.ctx.followupTick_().sent, 0, 'nothing more is due right now');
+    // 9 days later lead 1 is due for step 2; nobody is due for a step 3 (only two steps)
+    sh.rows.forEach(rw => { if (rw[0] === '919822220001' || rw[0] === '919822220005') rw[sh.rows[0].indexOf('Last Outbound')] = day(9); });
+    env.sent.length = 0;
+    assert.strictEqual(env.ctx.followupTick_().sent, 1);
+    assert.strictEqual(env.sent[0].body.template.name, 'fu_two');
+    assert.strictEqual(env.sent[0].body.to, '919822220001');
+    // a template WhatsApp refuses pauses everything for a day and tells the main salesperson
+    row('919822220008', Object.assign({}, base, { 'Last Outbound': day(4) }));
+    row('919822220009', Object.assign({}, base, { 'Last Outbound': day(4) }));
+    const orig = env.ctx.UrlFetchApp.fetch;
+    env.ctx.UrlFetchApp.fetch = (url, opt) => JSON.parse(opt.payload).type === 'template' ?
+      { getResponseCode: () => 404, getContentText: () => '{"error":{"code":132001,"message":"Template name does not exist"}}' } : orig(url, opt);
+    const bad = env.ctx.followupTick_();
+    assert.strictEqual(bad.failed, 1, 'stopped after the first refusal');
+    assert(texts(env).some(m => m.to === SALES && m.text.includes('paused for a day')));
+    env.ctx.UrlFetchApp.fetch = orig;
+    assert.strictEqual(env.ctx.followupTick_().reason, 'on hold after an error');
+  }
 };
 
 

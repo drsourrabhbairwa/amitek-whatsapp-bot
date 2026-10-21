@@ -49,6 +49,8 @@ var DEFAULT_SETTINGS = {
   QUIET_DAYS: '3',
   WORK_HOURS: '9-20',                // team reminders go out only between these India hours; urgent (hot) alerts ignore it
   REMINDER_MINUTES: '20',            // gap between reminders to the team for a lead nobody has contacted
+  FOLLOWUP_STEPS: '',                // follow-ups for leads who never replied: "days:template, days:template", e.g. "3:amitek_followup1, 8:amitek_followup2" (blank = off, at most 4)
+  FOLLOWUP_LANG: 'en',               // language of the follow-up templates (each takes just {{1}})
   REMINDER_MAX: '6',                 // reminders per lead, then the main salesperson is told once
   ALERT_TEMPLATE: 'team_lead_alert', // type none to turn off. Utility template used to reach a team member whose 24-hour WhatsApp window is closed ({{1}} team, {{2}} customer, {{3}} number)
   ALERT_TEMPLATE_LANG: 'en',
@@ -952,6 +954,7 @@ function activeLeads_() {
 
 /** Hourly: unanswered chats, hot leads not contacted, follow-ups due, quiet leads. */
 function hourlyCheck() {
+  try { followupTick_(); } catch (err) { console.error('followupTick_ failed: ' + err); }
   var now = new Date(), open = workOpen_(now);
   var unanswered = [], hot = [], due = [];
   activeLeads_().forEach(function (l) {
