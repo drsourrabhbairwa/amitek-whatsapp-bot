@@ -102,7 +102,7 @@ const tests = {
     post(env, payload([text(CUST, 'STOP')]));
     assert.strictEqual(lead(env, CUST)['Opt-in'], 'Opted out');
     assert.strictEqual(env.claudeCalls.length, 0);
-    assert(texts(env)[0].text.startsWith('Theek hai ji'));
+    assert(texts(env)[0].text.startsWith("Theek hai Sir/Ma'am"));
     post(env, payload([text(CUST, 'hello?')]));
     assert.strictEqual(texts(env).length, 1);
     post(env, payload([text(CUST, 'start')]));
@@ -515,11 +515,11 @@ const tests = {
     assert(env.triggers.some(x => x.getHandlerFunction() === 'campaignTick'), 'timer added');
     let tos = env.sent.map(s => s.body.to);
     assert.deepStrictEqual(tos, ['919811110001', '919811110002']);
-    assert.strictEqual(env.sent[0].body.template.components[0].parameters[0].text, 'Ramesh');
-    assert.strictEqual(env.sent[1].body.template.components[0].parameters[0].text, 'Shree');
+    assert.strictEqual(env.sent[0].body.template.components[0].parameters[0].text, "Sir/Ma'am");
+    assert.strictEqual(env.sent[1].body.template.components[0].parameters[0].text, "Sir/Ma'am");
     assert.strictEqual(lead(env, '919811110001').Status, 'Contacted');
     assert.strictEqual(lead(env, '919811110001').Campaign, 'Jaipur test');
-    assert(env.sheets['Messages'].rows.some(r => r[1] === '919811110001' && r[3] === 'campaign' && r[4].includes('Namaste Ramesh ji')));
+    assert(env.sheets['Messages'].rows.some(r => r[1] === '919811110001' && r[3] === 'campaign' && r[4].includes("Namaste Sir/Ma'am ji")));
     env.ctx.campaignTick();   // daily limit 3: only one more today
     assert.strictEqual(env.sent.length, 3);
     env.ctx.campaignTick();
@@ -547,7 +547,7 @@ const tests = {
     assert(api('campaignStart', { id }).message.includes('1 sent'));
     const t = env.sent.pop().body;
     assert.strictEqual(t.template.name, 'amitek_dealer_offer');
-    assert.deepStrictEqual(t.template.components[0].parameters.map(p => p.text), ['Priya', 'Waterproofing', 'Jaipur']);
+    assert.deepStrictEqual(t.template.components[0].parameters.map(p => p.text), ["Sir/Ma'am", 'Waterproofing', 'Jaipur']);
   },
   'single chat home screen: real commands answer in chat, navigation asks open the right screen'() {
     const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES } }));
@@ -896,7 +896,7 @@ const tests = {
     const by = {}; env.sent.filter(m => m.body.type === 'template').forEach(m => { by[m.body.to] = m.body.template; });
     assert.strictEqual(by['919811110001'].name, 'amitek_applicator'); assert.strictEqual(by['919811110001'].language.code, 'hi');
     assert.strictEqual(by['919811110002'].name, 'amitek_builder');
-    assert.deepStrictEqual(by['919811110001'].components[0].parameters[0].text, 'Ramesh', 'name filled in');
+    assert.deepStrictEqual(by['919811110001'].components[0].parameters[0].text, "Sir/Ma'am", 'name filled in');
     assert(!by['919811110003'] && !by['919811110004']);
     const h = env.ctx.history_('919811110001', 5)[0].body;
     assert(h.includes('third party manufacturing'), 'the chat shows what the lead was told');

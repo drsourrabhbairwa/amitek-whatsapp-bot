@@ -76,7 +76,7 @@ var DEFAULT_SETTINGS = {
 var STOP_WORDS = ['stop', 'unsubscribe', 'stop messages', 'not interested', 'abhi nahi', 'band karo', 'मत भेजो', 'अभी नहीं'];
 var START_WORDS = ['start', 'subscribe'];
 var CALL_WORDS = ['call me', 'call karein', 'discuss a project', 'कॉल करें', 'कॉल करे'];
-var GOODBYE = "Theek hai ji, ab aapko hamari taraf se message nahi aayenge. 🙏 Kabhi bhi zarurat ho to yahan 'START' likh dijiye.";
+var GOODBYE = "Theek hai Sir/Ma'am, ab aapko hamari taraf se message nahi aayenge. 🙏 Kabhi bhi zarurat ho to yahan 'START' likh dijiye.";
 var CALL_ACK = 'Ji zaroor 🙏 Hamari team ke member aapko jaldi call karenge.';
 
 function secret_(name) {
@@ -397,7 +397,7 @@ var GENTLE_ROLE = [
   '',
   'How you write:',
   "- Reply in the customer's language: English, Hindi (Devanagari or Roman) or Hinglish, matching how they write.",
-  '- Very short: 1-2 short lines. Simple words. Warm and respectful, use "ji". At most one simple question per message.',
+  '- Very short: 1-2 short lines. Simple words. Warm and respectful: address the customer as "Sir" or "Ma\'am" (or "Sir/Ma\'am" if unsure). Never use the word "ji". At most one simple question per message.',
   '- If you are opening the conversation (no earlier Amitek template already greeted them), start with a short, genuine greeting naming Amitek',
   '  (e.g. "Hello and welcome! I\'m your Amitek AI Assistant. Tell me what you need today, and I will instantly connect you with the dedicated specialist from the right department to help you."),',
   '  only once, never again after that. If the customer writes in Hindi/Hinglish, greet the same way but in their language.',
@@ -433,7 +433,7 @@ var SALES_ROLE = [
   'talking to customers on WhatsApp. You run the sale end to end: Discover -> Diagnose -> Recommend -> Quote -> Close,',
   'and pass the lead to a human salesperson at the right moment.',
   '',
-  "- Reply in the customer's language (English, Hindi or Hinglish). Short messages, one question at a time, use \"ji\".",
+  "- Reply in the customer's language (English, Hindi or Hinglish). Short messages, one question at a time, address the customer as \"Sir\" or \"Ma'am\" (\"Sir/Ma'am\" if unsure), never \"ji\".",
   '- Diagnose softly: let the customer lead. Learn the surface, area, city and whether it leaks from what they say; ask at most one',
   '  of these at a time, and only when you need it to help them. Never run through a checklist. Save it with update_lead.',
   '- If they describe a problem, use the knowledge below to name the likely cause before recommending a product — a real diagnosis,',
@@ -740,7 +740,7 @@ function handleInbound_(m) {
   if (lead['Opt-in'] === 'Opted out') {
     if (START_WORDS.indexOf(word) >= 0) {
       upsertLead_(m.phone, { 'Opt-in': 'Opted in', 'Status': 'Replied' }, 'bot');
-      send_(m.phone, 'Welcome back ji 🙏 Bataiye, hum aapki kya madad kar sakte hain?');
+      send_(m.phone, 'Welcome back Sir/Ma\'am 🙏 Bataiye, hum aapki kya madad kar sakte hain?');
     }
     return;
   }
@@ -1911,10 +1911,8 @@ function sentLast24h_() {
 }
 
 // ===================================================================== sending
-function firstName_(l) {
-  var n = String(l['Name'] || l['Business'] || '').trim();
-  return n ? n.split(/\s+/)[0].slice(0, 30) : 'ji';
-}
+var GREETING = "Sir/Ma'am";  // everyone is addressed the same way: no first names, no "ji"
+function firstName_(l) { return GREETING; }
 
 // A "Template Vars" value fills a template's body variables in order, e.g. "{Name}, Waterproofing, {City}".
 // {Field} pulls that column from the lead (Name, City, Category, Business, ...); anything else is sent as literal text.
@@ -2397,7 +2395,7 @@ function applySort_(row, category) {
 // ===================================================================== pitch by category
 /** What each type of lead is offered: the opening template and what the bot steers the chat towards. Editable in Settings. */
 var COMMON_TEMPLATE = 'amitek_intro';  // one approved opener for everyone; the bot tailors the pitch to the category once they reply
-var COMMON_TEXT = 'Namaste {{1}} ji. This is Amitek (APP Paints Chemicals Pvt. Ltd.). We make waterproofing, coatings and construction chemicals, and for builders and architects we also offer seamless flooring, home automation and CCTV solutions. 25+ years of manufacturing and field expertise, 1000+ contractors and dealers across India and overseas, Govt. Approved Star Export House. Tell us in one line what work you do and how we can help you.';
+var COMMON_TEXT = 'Hello {{1}}, this is Amitek (APP Paints Chemicals Pvt. Ltd.). We make waterproofing, coatings and construction chemicals, and for builders and architects we also offer seamless flooring, home automation and CCTV solutions. 25+ years of manufacturing and field expertise, 1000+ contractors and dealers across India and overseas, Govt. Approved Star Export House. Tell us in one line what work you do and how we can help you.';
 var PLAYBOOK_DEFAULTS = {
   'Applicator': { template: COMMON_TEMPLATE, text: COMMON_TEXT, pitch:
     'Main offer: third-party manufacturing (private label). Amitek manufactures waterproofing and coating products under the ' +

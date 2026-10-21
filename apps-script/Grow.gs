@@ -111,10 +111,8 @@ function sentLast24h_() {
 }
 
 // ===================================================================== sending
-function firstName_(l) {
-  var n = String(l['Name'] || l['Business'] || '').trim();
-  return n ? n.split(/\s+/)[0].slice(0, 30) : 'ji';
-}
+var GREETING = "Sir/Ma'am";  // everyone is addressed the same way: no first names, no "ji"
+function firstName_(l) { return GREETING; }
 
 // A "Template Vars" value fills a template's body variables in order, e.g. "{Name}, Waterproofing, {City}".
 // {Field} pulls that column from the lead (Name, City, Category, Business, ...); anything else is sent as literal text.
@@ -597,7 +595,7 @@ function applySort_(row, category) {
 // ===================================================================== pitch by category
 /** What each type of lead is offered: the opening template and what the bot steers the chat towards. Editable in Settings. */
 var COMMON_TEMPLATE = 'amitek_intro';  // one approved opener for everyone; the bot tailors the pitch to the category once they reply
-var COMMON_TEXT = 'Namaste {{1}} ji. This is Amitek (APP Paints Chemicals Pvt. Ltd.). We make waterproofing, coatings and construction chemicals, and for builders and architects we also offer seamless flooring, home automation and CCTV solutions. 25+ years of manufacturing and field expertise, 1000+ contractors and dealers across India and overseas, Govt. Approved Star Export House. Tell us in one line what work you do and how we can help you.';
+var COMMON_TEXT = 'Hello {{1}}, this is Amitek (APP Paints Chemicals Pvt. Ltd.). We make waterproofing, coatings and construction chemicals, and for builders and architects we also offer seamless flooring, home automation and CCTV solutions. 25+ years of manufacturing and field expertise, 1000+ contractors and dealers across India and overseas, Govt. Approved Star Export House. Tell us in one line what work you do and how we can help you.';
 var PLAYBOOK_DEFAULTS = {
   'Applicator': { template: COMMON_TEMPLATE, text: COMMON_TEXT, pitch:
     'Main offer: third-party manufacturing (private label). Amitek manufactures waterproofing and coating products under the ' +
