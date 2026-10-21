@@ -133,14 +133,14 @@ function render(){
   const a=$('#app');
   if(!S.user){a.innerHTML=S.authTab==='landing'?landing():(S.authTab==='login'||S.authTab==='signup'?authPage():landing());bindPublic();return}
   if(S.isOwner){a.innerHTML=shell(ownerBody(),'owner');bindShell();loadOwnerView();return}
-  if(!S.profile){a.innerHTML=top()+onboard();bindOnboard();return}
-  if(S.company.status!=='active'){a.innerHTML=top()+payPage();bindPay();return}
+  if(!S.profile){a.innerHTML=topbar()+onboard();bindOnboard();return}
+  if(S.company.status!=='active'){a.innerHTML=topbar()+payPage();bindPay();return}
   a.innerHTML=shell(companyBody(),'company');bindShell();loadCompanyView();
 }
-function top(extra){return `<div class="wrap"><div class="top"><div class="brand"><span class="mark">A</span>${esc(S.pub.product_name||'Amitek AI Sales Employee')}</div><div class="row" style="margin:0">${S.user?`<span class="hint">${esc(S.user.email)}</span><button class="btn small" id="out">Sign out</button>`:`<button class="btn small" id="goLogin">Log in</button><button class="btn small primary" id="goSignup">Sign up</button>`}</div></div></div>`}
+function topbar(extra){return `<div class="wrap"><div class="top"><div class="brand"><span class="mark">A</span>${esc(S.pub.product_name||'Amitek AI Sales Employee')}</div><div class="row" style="margin:0">${S.user?`<span class="hint">${esc(S.user.email)}</span><button class="btn small" id="out">Sign out</button>`:`<button class="btn small" id="goLogin">Log in</button><button class="btn small primary" id="goSignup">Sign up</button>`}</div></div></div>`}
 
 /* ---------- public landing ---------- */
-function landing(){return `<div class="wrap">${top()}
+function landing(){return `<div class="wrap">${topbar()}
 <section class="hero"><div>
 <h1>An AI sales employee that works your WhatsApp leads.</h1>
 <p class="lead">Upload your lead sheet. It sends the first message, answers the customer politely, hands the chat to your team, and keeps chasing your people until every lead is called.</p>
@@ -160,7 +160,7 @@ function landing(){return `<div class="wrap">${top()}
 <div class="card"><h3>Owner approves access</h3><p class="hint">Pay by QR. We activate your account after we confirm the payment.</p></div></div></section>
 <section class="sec"><h2>Pricing</h2><div class="card" style="max-width:520px"><div class="price"><b>${esc(S.pub.price_text||'')}</b></div><p class="hint">One WhatsApp number per plan. Pay by UPI QR after sign-up. Your account turns on once we confirm the payment.</p><button class="btn primary" id="buy2">Buy and get started</button></div></section>
 </div>`}
-function authPage(){const su=S.authTab==='signup';return top()+`<div class="auth card">
+function authPage(){const su=S.authTab==='signup';return topbar()+`<div class="auth card">
 <div class="tabs"><button class="btn ${!su?'primary':''}" id="tLogin">Log in</button><button class="btn ${su?'primary':''}" id="tSignup">Sign up</button></div>
 <form id="af">${su?`<div class="field"><label for="cn">Company name</label><input id="cn" required autocomplete="organization"></div>
 <div class="field"><label for="fn">Your name</label><input id="fn" required autocomplete="name"></div>
