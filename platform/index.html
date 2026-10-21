@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Amitek AI Sales Employee</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: public landing page, then a left-menu console for each company and one for the owner. */
+:root{
+  --bg:#f4f6f9; --panel:#ffffff; --ink:#0e1b2c; --mute:#5b6b7f; --line:#dfe5ec;
+  --accent:#0a6c74; --accent-ink:#ffffff; --accent-soft:#dff1f2;
+  --good:#1b7f4b; --good-soft:#dcf3e6; --warn:#a15c00; --warn-soft:#fdeccd; --bad:#b3261e; --bad-soft:#fbe0de;
+  --shadow:0 1px 2px rgba(14,27,44,.06),0 8px 24px rgba(14,27,44,.06);
+  --display:'Bricolage Grotesque',system-ui,sans-serif; --body:'Public Sans',system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0b141f; --panel:#121e2c; --ink:#e8eef5; --mute:#93a3b6; --line:#243447;
+  --accent:#43c0c9; --accent-ink:#06222a; --accent-soft:#12343a;
+  --good:#58d18f; --good-soft:#12301f; --warn:#f0b34d; --warn-soft:#3a2a0c; --bad:#ff8a80; --bad-soft:#3d1714;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0b141f; --panel:#121e2c; --ink:#e8eef5; --mute:#93a3b6; --line:#243447;
+  --accent:#43c0c9; --accent-ink:#06222a; --accent-soft:#12343a;
+  --good:#58d18f; --good-soft:#12301f; --warn:#f0b34d; --warn-soft:#3a2a0c; --bad:#ff8a80; --bad-soft:#3d1714;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35); color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--body);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
+h1,h2,h3{font-family:var(--display);line-height:1.12;margin:0;text-wrap:balance}
+a{color:var(--accent)}
+button,input,select,textarea{font:inherit;color:inherit}
+.btn{display:inline-flex;align-items:center;gap:.5rem;border:1px solid var(--line);background:var(--panel);padding:.55rem .95rem;border-radius:8px;cursor:pointer;font-weight:600;text-decoration:none}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.small{padding:.3rem .65rem;font-size:13px}
+.btn.bad{color:var(--bad)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,select,textarea{width:100%;padding:.6rem .7rem;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+label{display:block;font-weight:600;font-size:13px;margin:0 0 .3rem}
+.field{margin-bottom:.9rem}
+.hint{color:var(--mute);font-size:13px}
+.pill{display:inline-block;padding:.1rem .55rem;border-radius:99px;font-size:12px;font-weight:600;background:var(--accent-soft);color:var(--accent)}
+.pill.good{background:var(--good-soft);color:var(--good)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1.1rem;box-shadow:var(--shadow)}
+.wrap{max-width:1100px;margin:0 auto}
+.top{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 0;flex-wrap:wrap}
+.brand{font-family:var(--display);font-weight:800;font-size:19px;display:flex;align-items:center;gap:.55rem}
+.mark{width:26px;height:26px;border-radius:7px;background:var(--accent);display:grid;place-items:center;color:var(--accent-ink);font-size:14px}
+.hero{display:grid;grid-template-columns:1.2fr 1fr;gap:2.5rem;align-items:center;padding:3rem 0 2.5rem}
+.hero h1{font-size:clamp(34px,5vw,56px);font-weight:800;letter-spacing:-.02em}
+.hero p.lead{font-size:18px;color:var(--mute);max-width:52ch;margin:1rem 0 1.5rem}
+.chat{display:flex;flex-direction:column;gap:.5rem;padding:1rem}
+.bub{max-width:88%;padding:.55rem .75rem;border-radius:12px;font-size:14px;background:var(--bg);border:1px solid var(--line)}
+.bub.me{align-self:flex-end;background:var(--accent-soft);border-color:transparent}
+.bub small{display:block;color:var(--mute);margin-top:.15rem}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem}
+.sec{padding:2rem 0}
+.sec h2{font-size:28px;margin-bottom:1rem}
+.price{display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap}
+.price b{font-family:var(--display);font-size:40px}
+.auth{max-width:420px;margin:2.5rem auto}
+.tabs{display:flex;gap:.4rem;margin-bottom:1rem}
+.tabs button{flex:1}
+.shell{display:grid;grid-template-columns:220px minmax(0,1fr);gap:1.25rem;min-height:calc(100vh - 70px)}
+.side{padding:1rem 0;position:sticky;top:0;align-self:start}
+.side nav{display:flex;flex-direction:column;gap:.2rem;margin-top:1rem}
+.side nav button{text-align:left;border:0;background:none;padding:.55rem .7rem;border-radius:8px;cursor:pointer;font-weight:600;color:var(--mute)}
+.side nav button.on{background:var(--accent-soft);color:var(--accent)}
+.main{padding:1rem 0 3rem;min-width:0}
+.main h2{font-size:26px;margin-bottom:1rem}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem;margin-bottom:1.2rem}
+.kpi b{display:block;font-family:var(--display);font-size:30px;font-variant-numeric:tabular-nums}
+.kpi span{color:var(--mute);font-size:13px}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:.55rem .75rem;border-bottom:1px solid var(--line);white-space:nowrap;font-size:14px}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute)}
+.row{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:.9rem}
+.row>*{min-width:0}
+.bar{display:flex;height:10px;border-radius:99px;overflow:hidden;background:var(--line)}
+.bar i{display:block}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:max(18px,env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:.6rem 1rem;border-radius:10px;z-index:20;max-width:90vw}
+.qr{max-width:240px;width:100%;border-radius:10px;border:1px solid var(--line);background:#fff}
+.steps{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem}
+@media (max-width:820px){
+  .hero{grid-template-columns:1fr;gap:1.5rem;padding-top:1.5rem}
+  .shell{grid-template-columns:1fr}
+  .side{position:static;padding-bottom:0}
+  .side nav{flex-direction:row;flex-wrap:wrap}
+}
+@media (prefers-reduced-motion:no-preference){.card{transition:border-color .15s}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast" hidden></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const SB_URL='https://dflkvhnmjlaetevkptwi.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRmbGt2aG5tamxhZXRldmtwdHdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI1NjE3MzUsImV4cCI6MjEwODEzNzczNX0.HeVetVe59ff4eGs2TnbuEuvW-hK0lfhTLl4pWNPiL-M';
+const sb=supabase.createClient(SB_URL,SB_KEY);
+const $=s=>document.querySelector(s);
+const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let S={user:null,profile:null,company:null,isOwner:false,pub:{},view:'home',authTab:'landing',page:0,q:'',st:'',ocompanies:[],opayments:[]};
+function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>t.hidden=true,3500)}
+function fmt(d){if(!d)return'';const x=new Date(d);return isNaN(x)?'':x.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
+const STATUSES=['New','Contacted','Replied','Qualified','Hot','Won','Lost','Opted out'];
+const COLORS={New:'#9aa7b6',Contacted:'#4d8fd6',Replied:'#0a6c74',Qualified:'#7a5cc4',Hot:'#d9534f',Won:'#1b7f4b',Lost:'#6b6b6b','Opted out':'#a15c00'};
+
+async function boot(){
+  const {data:ps}=await sb.from('platform_settings').select('*');
+  S.pub={};(ps||[]).forEach(r=>S.pub[r.key]=r.value);
+  const {data:{session}}=await sb.auth.getSession();
+  S.user=session?session.user:null;
+  if(S.user)await loadMe();
+  render();
+}
+async function loadMe(){
+  const {data:pa}=await sb.from('platform_admins').select('user_id').eq('user_id',S.user.id);
+  S.isOwner=!!(pa&&pa.length);
+  const {data:pr}=await sb.from('profiles').select('*').eq('user_id',S.user.id).maybeSingle();
+  S.profile=pr;S.company=null;
+  if(pr){const {data:c}=await sb.from('companies').select('*').eq('id',pr.company_id).maybeSingle();S.company=c}
+  if(S.isOwner&&!['owner','ocompanies','opayments','osettings'].includes(S.view))S.view='owner';
+  else if(!S.isOwner&&['owner','ocompanies','opayments','osettings'].includes(S.view))S.view='home';
+}
+sb.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT'){S.user=null;S.profile=null;S.company=null;S.isOwner=false;render()}});
+
+function render(){
+  const a=$('#app');
+  if(!S.user){a.innerHTML=S.authTab==='landing'?landing():(S.authTab==='login'||S.authTab==='signup'?authPage():landing());bindPublic();return}
+  if(S.isOwner){a.innerHTML=shell(ownerBody(),'owner');bindShell();loadOwnerView();return}
+  if(!S.profile){a.innerHTML=top()+onboard();bindOnboard();return}
+  if(S.company.status!=='active'){a.innerHTML=top()+payPage();bindPay();return}
+  a.innerHTML=shell(companyBody(),'company');bindShell();loadCompanyView();
+}
+function top(extra){return `<div class="wrap"><div class="top"><div class="brand"><span class="mark">A</span>${esc(S.pub.product_name||'Amitek AI Sales Employee')}</div><div class="row" style="margin:0">${S.user?`<span class="hint">${esc(S.user.email)}</span><button class="btn small" id="out">Sign out</button>`:`<button class="btn small" id="goLogin">Log in</button><button class="btn small primary" id="goSignup">Sign up</button>`}</div></div></div>`}
+
+/* ---------- public landing ---------- */
+function landing(){return `<div class="wrap">${top()}
+<section class="hero"><div>
+<h1>An AI sales employee that works your WhatsApp leads.</h1>
+<p class="lead">Upload your lead sheet. It sends the first message, answers the customer politely, hands the chat to your team, and keeps chasing your people until every lead is called.</p>
+<div class="row"><button class="btn primary" id="buy">Buy and get started</button><a class="btn" href="#how">How it works</a></div>
+<p class="hint">Each company gets its own private data space and its own WhatsApp number.</p></div>
+<div class="card chat" aria-label="Example conversation">
+<div class="bub">Hello Rahul, greetings from Amitek! Could you tell us what you are looking for?<small>Bot, 10:02</small></div>
+<div class="bub me">Need waterproofing for a 2000 sq ft terrace in Jaipur<small>Customer, 10:04</small></div>
+<div class="bub">Thank you so much for your response. Our dedicated team member will reply shortly.<small>Bot, 10:04</small></div>
+<div class="bub" style="border-color:var(--warn)">Reminder 2/6: nobody has contacted Rahul (+91 98xxx) yet. Reply DONE after you call.<small>Bot to team member, 10:44</small></div></div></section>
+<section class="sec" id="how"><h2>What it does for you</h2><div class="grid3">
+<div class="card"><h3>Bulk messages that fit each lead</h3><p class="hint">Upload an Excel sheet. Leads are sorted by type, and a lead with only a name and number still gets your welcome message.</p></div>
+<div class="card"><h3>Polite handover</h3><p class="hint">When a customer replies, the bot thanks them and stops talking. Your team member takes over.</p></div>
+<div class="card"><h3>Team follow-up</h3><p class="hint">Reminders during working hours, urgent ones at any hour, and a daily follow-up report. You decide how firm it is.</p></div>
+<div class="card"><h3>Your own data space</h3><p class="hint">Your leads, chats and settings are separate from every other company.</p></div>
+<div class="card"><h3>Built for WhatsApp rules</h3><p class="hint">Approved templates, the 24-hour window, opt-out handling and daily limits are part of the design.</p></div>
+<div class="card"><h3>Owner approves access</h3><p class="hint">Pay by QR. We activate your account after we confirm the payment.</p></div></div></section>
+<section class="sec"><h2>Pricing</h2><div class="card" style="max-width:520px"><div class="price"><b>${esc(S.pub.price_text||'')}</b></div><p class="hint">One WhatsApp number per plan. Pay by UPI QR after sign-up. Your account turns on once we confirm the payment.</p><button class="btn primary" id="buy2">Buy and get started</button></div></section>
+</div>`}
+function authPage(){const su=S.authTab==='signup';return top()+`<div class="auth card">
+<div class="tabs"><button class="btn ${!su?'primary':''}" id="tLogin">Log in</button><button class="btn ${su?'primary':''}" id="tSignup">Sign up</button></div>
+<form id="af">${su?`<div class="field"><label for="cn">Company name</label><input id="cn" required autocomplete="organization"></div>
+<div class="field"><label for="fn">Your name</label><input id="fn" required autocomplete="name"></div>
+<div class="field"><label for="wa">WhatsApp number for the bot</label><input id="wa" inputmode="tel" placeholder="91XXXXXXXXXX" required></div>`:''}
+<div class="field"><label for="em">Email</label><input id="em" type="email" required autocomplete="email"></div>
+<div class="field"><label for="pw">Password</label><input id="pw" type="password" minlength="8" required autocomplete="${su?'new-password':'current-password'}"></div>
+<button class="btn primary" style="width:100%" id="go">${su?'Create account':'Log in'}</button><p class="hint" id="msg"></p></form>
+<p class="hint"><a href="#" id="back">Back to home</a></p></div>`}
+function bindPublic(){
+  const g=(i,f)=>{const e=$(i);if(e)e.onclick=ev=>{ev.preventDefault();f()}};
+  g('#buy',()=>{S.authTab='signup';render()});g('#buy2',()=>{S.authTab='signup';render()});
+  g('#goLogin',()=>{S.authTab='login';render()});g('#goSignup',()=>{S.authTab='signup';render()});
+  g('#tLogin',()=>{S.authTab='login';render()});g('#tSignup',()=>{S.authTab='signup';render()});g('#back',()=>{S.authTab='landing';render()});
+  const f=$('#af');if(f)f.onsubmit=async e=>{e.preventDefault();const m=$('#msg');m.textContent='Please wait...';$('#go').disabled=true;
+    const em=$('#em').value.trim(),pw=$('#pw').value;
+    try{
+      if(S.authTab==='signup'){
+        const meta={company:$('#cn').value.trim(),full_name:$('#fn').value.trim(),wa:$('#wa').value.replace(/\D/g,'')};
+        const {data,error}=await sb.auth.signUp({email:em,password:pw,options:{data:meta}});
+        if(error)throw error;
+        if(!data.session){m.textContent='Account created. Check your email for the confirmation link, then log in here.';S.authTab='login';$('#go').disabled=false;return}
+        S.user=data.user;await autoRegister(meta);await loadMe();render();
+      }else{
+        const {data,error}=await sb.auth.signInWithPassword({email:em,password:pw});
+        if(error)throw error;S.user=data.user;await loadMe();
+        if(!S.profile&&!S.isOwner){const md=S.user.user_metadata||{};if(md.company)await autoRegister(md),await loadMe()}
+        render();
+      }
+    }catch(err){m.textContent=err.message||'Something went wrong';$('#go').disabled=false}
+  };
+}
+async function autoRegister(md){const {error}=await sb.rpc('register_company',{p_name:md.company,p_wa:md.wa||'',p_full_name:md.full_name||''});if(error&&!/already/.test(error.message))throw error}
+function bindTop(){const o=$('#out');if(o)o.onclick=async()=>{await sb.auth.signOut();S.authTab='landing';render()}}
+
+/* ---------- onboarding and payment ---------- */
+function onboard(){return `<div class="wrap"><div class="auth card"><h2>Set up your company</h2><p class="hint">One last step before payment.</p>
+<div class="field"><label for="oc">Company name</label><input id="oc"></div><div class="field"><label for="on">Your name</label><input id="on"></div>
+<div class="field"><label for="ow">WhatsApp number for the bot</label><input id="ow" placeholder="91XXXXXXXXXX"></div><button class="btn primary" id="osave">Continue to payment</button></div></div>`}
+function bindOnboard(){bindTop();$('#osave').onclick=async()=>{try{await autoRegister({company:$('#oc').value,full_name:$('#on').value,wa:$('#ow').value.replace(/\D/g,'')});await loadMe();render()}catch(e){toast(e.message)}}}
+function payPage(){
+  const c=S.company;return `<div class="wrap" style="max-width:760px"><div class="card"><div class="steps"><span class="pill good">1 Account</span><span class="pill ${c.status==='pending'?'warn':'bad'}">2 Payment</span><span class="pill">3 Approval</span><span class="pill">4 Start</span></div>
+<h2>${c.status==='pending'?'Pay to activate '+esc(c.name):'Account '+esc(c.status)}</h2>
+<div class="price"><b>${esc(S.pub.price_text||'')}</b></div>
+<div class="row" style="align-items:flex-start;margin-top:1rem"><div>${S.pub.qr_image?`<img class="qr" alt="UPI QR code" src="${esc(S.pub.qr_image)}">`:`<div class="card hint">The payment QR code has not been added yet. Please contact us.</div>`}
+${S.pub.upi_id?`<p>UPI ID: <b>${esc(S.pub.upi_id)}</b></p>`:''}</div>
+<div style="flex:1;min-width:240px"><p class="hint">After you pay, enter the transaction reference below. We check our bank and approve your account.</p>
+<div class="field"><label for="tx">Transaction reference (UTR)</label><input id="tx"></div><div class="field"><label for="am">Amount paid (₹)</label><input id="am" inputmode="decimal" value="${esc(S.pub.price_amount||'')}"></div>
+<div class="field"><label for="nt">Note (optional)</label><input id="nt"></div><button class="btn primary" id="pay">I have paid</button></div></div>
+<h3 style="margin-top:1.4rem;font-size:18px">Your payments</h3><div id="plist" class="hint">Loading...</div></div></div>`}
+async function bindPay(){bindTop();
+  $('#pay').onclick=async()=>{const t=$('#tx').value.trim();if(!t)return toast('Enter the transaction reference');
+    const {error}=await sb.from('payments').insert({company_id:S.company.id,amount:Number($('#am').value)||null,txn_ref:t,note:$('#nt').value});
+    if(error)return toast(error.message);toast('Sent. We will approve it after checking.');$('#tx').value='';listPay()};
+  listPay();
+  async function listPay(){const {data}=await sb.from('payments').select('*').eq('company_id',S.company.id).order('created_at',{ascending:false});
+    $('#plist').innerHTML=(data&&data.length)?data.map(p=>`<div class="row" style="margin:0 0 .4rem"><span class="pill ${p.status==='approved'?'good':p.status==='rejected'?'bad':'warn'}">${esc(p.status)}</span> ₹${esc(p.amount||'')} · ${esc(p.txn_ref)} · ${fmt(p.created_at)}</div>`).join(''):'No payments yet.'}
+  const t=setInterval(async()=>{if(!S.user)return clearInterval(t);const {data:c}=await sb.from('companies').select('status').eq('id',S.company.id).maybeSingle();if(c&&c.status==='active'){clearInterval(t);await loadMe();render()}},15000)}
+
+/* ---------- shell ---------- */
+function shell(body,kind){
+  const items=kind==='owner'?[['owner','Overview'],['ocompanies','Companies'],['opayments','Payments'],['osettings','Payment settings']]
+    :[['home','Home'],['leads','Leads'],['import','Import data'],['team','Team'],['settings','Bot settings']];
+  return `<div class="wrap"><div class="shell"><aside class="side"><div class="brand"><span class="mark">A</span>${kind==='owner'?'Owner console':esc(S.company.name)}</div>
+<nav>${items.map(([k,l])=>`<button data-v="${k}" class="${S.view===k?'on':''}">${l}</button>`).join('')}</nav>
+<p class="hint" style="margin-top:1.5rem">${esc(S.user.email)}</p><button class="btn small" id="out">Sign out</button></aside><main class="main" id="main">${body}</main></div></div>`}
+function bindShell(){bindTop();document.querySelectorAll('.side nav button').forEach(b=>b.onclick=()=>{S.view=b.dataset.v;S.page=0;render()})}
+function companyBody(){return '<p class="hint">Loading...</p>'}
+function ownerBody(){return '<p class="hint">Loading...</p>'}
+
+/* ---------- company views ---------- */
+async function loadCompanyView(){const m=$('#main');const cid=S.company.id;
+  if(S.view==='home'){
+    const cnt=async(f)=>{let q=sb.from('leads').select('phone',{count:'exact',head:true});if(f)q=f(q);const {count}=await q;return count||0};
+    const [total,...byS]=await Promise.all([cnt(),...STATUSES.map(s=>cnt(q=>q.eq('status',s)))]);
+    const opted=await cnt(q=>q.eq('opt_in','Opted in'));
+    const {count:msgs}=await sb.from('messages').select('id',{count:'exact',head:true});
+    const {data:cfg}=await sb.from('company_settings').select('*');const cs={};(cfg||[]).forEach(r=>cs[r.key]=r.value);
+    const sum=byS.reduce((a,b)=>a+b,0)||1;
+    m.innerHTML=`<h2>Home</h2><div class="kpis"><div class="card kpi"><b>${total}</b><span>Total leads</span></div><div class="card kpi"><b>${byS[2]}</b><span>Replied</span></div><div class="card kpi"><b>${byS[4]}</b><span>Hot</span></div><div class="card kpi"><b>${opted}</b><span>Opted in</span></div><div class="card kpi"><b>${msgs||0}</b><span>Messages logged</span></div></div>
+<div class="card"><h3 style="font-size:18px;margin-bottom:.7rem">Lead status</h3><div class="bar" role="img" aria-label="Lead status split">${STATUSES.map((s,i)=>`<i style="width:${byS[i]/sum*100}%;background:${COLORS[s]}"></i>`).join('')}</div>
+<div class="row" style="margin:.8rem 0 0">${STATUSES.map((s,i)=>`<span class="hint"><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${COLORS[s]}"></span> ${s} ${byS[i]}</span>`).join('')}</div></div>
+<div class="card" style="margin-top:1rem"><h3 style="font-size:18px">Bot mode</h3><p class="hint">Status: <span class="pill ${cs.TRAINED==='true'?'good':'warn'}">${cs.TRAINED==='true'?'Trained enough: talks more with clients and team':'Learning: watches, alerts and asks for chat history'}</span> Change it in Bot settings.</p>
+${S.company.active_until?`<p class="hint">Plan active until ${esc(S.company.active_until)}.</p>`:''}</div>`;return}
+  if(S.view==='leads'){
+    m.innerHTML=`<h2>Leads</h2><div class="row"><input id="lq" placeholder="Search name, phone, business, city" style="max-width:320px" value="${esc(S.q)}"><select id="ls" style="max-width:180px"><option value="">All statuses</option>${STATUSES.map(s=>`<option ${S.st===s?'selected':''}>${s}</option>`).join('')}</select></div><div id="lt">Loading...</div>`;
+    $('#lq').onchange=e=>{S.q=e.target.value.trim();S.page=0;loadCompanyView()};$('#ls').onchange=e=>{S.st=e.target.value;S.page=0;loadCompanyView()};
+    const PS=50;let q=sb.from('leads').select('phone,name,business,category,city,status,opt_in,assigned_to,last_inbound',{count:'exact'});
+    if(S.st)q=q.eq('status',S.st);
+    if(S.q){const t=S.q.replace(/[,()%]/g,' ');q=q.or(`name.ilike.%${t}%,phone.ilike.%${t}%,business.ilike.%${t}%,city.ilike.%${t}%`)}
+    const {data,count,error}=await q.order('updated_at',{ascending:false}).range(S.page*PS,S.page*PS+PS-1);
+    if(error){$('#lt').textContent=error.message;return}
+    $('#lt').innerHTML=`<div class="tablebox"><table><thead><tr><th>Name</th><th>Phone</th><th>Category</th><th>City</th><th>Status</th><th>Consent</th><th>Assigned</th><th>Last reply</th></tr></thead><tbody>${(data||[]).map(r=>`<tr><td>${esc(r.name||r.business)}</td><td>${esc(r.phone)}</td><td>${esc(r.category)}</td><td>${esc(r.city)}</td><td><span class="pill" style="background:transparent;border:1px solid ${COLORS[r.status]||'#999'};color:var(--ink)">${esc(r.status)}</span></td><td>${esc(r.opt_in)}</td><td>${esc(r.assigned_to)}</td><td>${fmt(r.last_inbound)}</td></tr>`).join('')||'<tr><td colspan="8">No leads yet. Use Import data.</td></tr>'}</tbody></table></div>
+<div class="row" style="margin-top:.8rem"><button class="btn small" id="pp" ${S.page?'':'disabled'}>Previous</button><span class="hint">${count?S.page*PS+1:0}-${Math.min(count||0,S.page*PS+PS)} of ${count||0}</span><button class="btn small" id="pn" ${(S.page+1)*PS<(count||0)?'':'disabled'}>Next</button></div>`;
+    $('#pp').onclick=()=>{S.page--;loadCompanyView()};$('#pn').onclick=()=>{S.page++;loadCompanyView()};return}
+  if(S.view==='import'){
+    m.innerHTML=`<h2>Import data</h2><div class="card"><p class="hint">Upload an Excel (.xlsx) or CSV file. The sheet named <b>Leads</b> is needed: columns Phone, Name, Business, Category, City, State, Status, Opt-in and others are recognised. If the workbook also has <b>Messages</b> and <b>Knowledge</b> sheets, they are imported too. Existing phone numbers are updated, never duplicated.</p>
+<div class="field"><input type="file" id="fi" accept=".xlsx,.xls,.csv"></div><button class="btn primary" id="fgo">Import</button><pre id="flog" class="hint" style="white-space:pre-wrap"></pre></div>`;
+    $('#fgo').onclick=()=>importFile();return}
+  if(S.view==='team'){
+    const {data}=await sb.from('team_members').select('*').order('id');
+    m.innerHTML=`<h2>Team</h2><p class="hint">People who receive lead alerts and reminders on WhatsApp. They get alerts 9 AM to 8 PM; urgent ones at any hour.</p>
+<div class="card"><div class="row"><input id="tn" placeholder="Name" style="max-width:200px"><input id="tp" placeholder="WhatsApp 91XXXXXXXXXX" inputmode="tel" style="max-width:220px"><input id="tc" placeholder="Categories (blank = all)" style="max-width:220px"><button class="btn primary" id="ta">Add</button></div></div>
+<div class="tablebox" style="margin-top:1rem"><table><thead><tr><th>Name</th><th>WhatsApp</th><th>Categories</th><th></th></tr></thead><tbody>${(data||[]).map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.phone)}</td><td>${esc(r.categories||'All')}</td><td><button class="btn small bad" data-del="${r.id}">Remove</button></td></tr>`).join('')||'<tr><td colspan="4">No team members yet.</td></tr>'}</tbody></table></div>`;
+    $('#ta').onclick=async()=>{const p=$('#tp').value.replace(/\D/g,'');if(p.length<10)return toast('Enter a valid number');const {error}=await sb.from('team_members').insert({company_id:cid,name:$('#tn').value,phone:p.length===10?'91'+p:p,categories:$('#tc').value});if(error)return toast(error.message);loadCompanyView()};
+    document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await sb.from('team_members').delete().eq('id',b.dataset.del);loadCompanyView()});return}
+  if(S.view==='settings'){
+    const {data}=await sb.from('company_settings').select('*');const c={};(data||[]).forEach(r=>c[r.key]=r.value);
+    const v=(k,d)=>esc(c[k]!==undefined?c[k]:d);
+    m.innerHTML=`<h2>Bot settings</h2><div class="card" style="max-width:640px">
+<div class="field"><label for="s1">Team working hours (India time)</label><div class="row" style="margin:0"><input id="s1" value="${v('WORK_FROM','9')}" style="max-width:90px"> to <input id="s2" value="${v('WORK_TO','20')}" style="max-width:90px"></div><p class="hint">Reminders to your team go out only in these hours. Urgent leads ignore this.</p></div>
+<div class="field"><label for="s3">Reminder gap (minutes)</label><input id="s3" value="${v('REMINDER_MINUTES','20')}" style="max-width:140px"></div>
+<div class="field"><label for="s4">Reminders per lead before you are told</label><input id="s4" value="${v('REMINDER_MAX','6')}" style="max-width:140px"></div>
+<div class="field"><label for="s5">Daily marketing messages (per number)</label><input id="s5" value="${v('DAILY_LIMIT','250')}" style="max-width:140px"></div>
+<div class="field"><label for="s6">Gap between marketing messages to the same person (days)</label><input id="s6" value="${v('MARKETING_GAP_DAYS','7')}" style="max-width:140px"></div>
+<div class="field"><label for="s7">Marketing messages per person, at most</label><input id="s7" value="${v('MARKETING_MAX','3')}" style="max-width:140px"></div>
+<div class="field"><label for="s8">Bot stage</label><select id="s8"><option value="false" ${c.TRAINED==='true'?'':'selected'}>Learning: watch, alert, ask for chat history</option><option value="true" ${c.TRAINED==='true'?'selected':''}>Trained enough: talk more with clients and team</option></select></div>
+<div class="field"><label for="s9">Standing rules from the owner (the bot follows these)</label><textarea id="s9" rows="4">${esc(c.OWNER_RULES||'')}</textarea></div>
+<button class="btn primary" id="ssave">Save settings</button></div>`;
+    $('#ssave').onclick=async()=>{const rows=[['WORK_FROM','s1'],['WORK_TO','s2'],['REMINDER_MINUTES','s3'],['REMINDER_MAX','s4'],['DAILY_LIMIT','s5'],['MARKETING_GAP_DAYS','s6'],['MARKETING_MAX','s7'],['TRAINED','s8'],['OWNER_RULES','s9']].map(([k,i])=>({company_id:cid,key:k,value:$('#'+i).value}));
+      const {error}=await sb.from('company_settings').upsert(rows);toast(error?error.message:'Saved')};return}
+}
+
+/* ---------- import ---------- */
+const MAP={phone:'phone',name:'name',business:'business',category:'category',tier:'tier',city:'city',state:'state',stage:'stage',status:'status','opt-in':'opt_in',language:'language',requirement:'requirement','area sqft':'area_sqft','assigned to':'assigned_to',campaign:'campaign','next follow-up':'next_followup','follow-up note':'followup_note','handoff at':'handoff_at','last inbound':'last_inbound','last outbound':'last_outbound','last human contact':'last_human_contact','bot paused until':'bot_paused_until','lost reason':'lost_reason',source:'source',priority:'priority'};
+const DATES=['next_followup','handoff_at','last_inbound','last_outbound','last_human_contact','bot_paused_until'];
+const normPhone=v=>{const d=String(v==null?'':v).replace(/\D/g,'');return d.length===10?'91'+d:d};
+const iso=v=>{if(v==null||v==='')return null;const d=v instanceof Date?v:new Date(v);return isNaN(d)?null:d.toISOString()};
+async function importFile(){
+  const f=$('#fi').files[0],log=$('#flog');if(!f)return toast('Choose a file first');
+  const L=t=>{log.textContent+=t+'\n'};log.textContent='';$('#fgo').disabled=true;
+  try{
+    const wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true});
+    const sheet=n=>{const k=wb.SheetNames.find(x=>x.toLowerCase()===n)||(n==='leads'&&wb.SheetNames.length===1?wb.SheetNames[0]:null);return k?XLSX.utils.sheet_to_json(wb.Sheets[k],{defval:'',raw:true}):null};
+    const leads=sheet('leads');if(!leads)throw new Error('No sheet named Leads found.');
+    const cid=S.company.id,seen=new Set(),rows=[];let skipped=0;
+    for(const r of leads){const o={company_id:cid,extra:{}};
+      for(const [k,v] of Object.entries(r)){const m=MAP[k.trim().toLowerCase()];if(!m){if(v!=='')o.extra[k]=String(v).slice(0,300);continue}
+        o[m]=DATES.includes(m)?iso(v):String(v).trim()}
+      o.phone=normPhone(o.phone);if(o.phone.length<11||seen.has(o.phone)){skipped++;continue}seen.add(o.phone);
+      ['name','business','category','city','state','status','opt_in'].forEach(k=>{if(o[k]==='')o[k]=null});
+      if(!o.status)o.status='New';if(!o.opt_in)o.opt_in='Not Asked';rows.push(o)}
+    L('Leads read: '+rows.length+' valid, '+skipped+' skipped (bad or repeated number).');
+    for(let i=0;i<rows.length;i+=500){const {error}=await sb.from('leads').upsert(rows.slice(i,i+500),{onConflict:'company_id,phone'});if(error)throw error;L('Leads saved: '+Math.min(i+500,rows.length)+' / '+rows.length)}
+    const ms=sheet('messages');
+    if(ms&&ms.length){const mm=ms.filter(r=>r.Phone).map(r=>({company_id:cid,phone:normPhone(r.Phone),direction:String(r.Direction||''),sender:String(r.Sender||''),body:String(r.Body||''),wa_message_id:String(r['WA Message ID']||''),at:iso(r.Time)||new Date().toISOString()}));
+      for(let i=0;i<mm.length;i+=500){const {error}=await sb.from('messages').insert(mm.slice(i,i+500));if(error)throw error}L('Messages saved: '+mm.length)}
+    const ks=sheet('knowledge');
+    if(ks&&ks.length){const kk=ks.map(r=>{const v=Object.values(r);return{company_id:cid,title:String(v[0]||''),content:String(v[1]||'')}}).filter(r=>r.title||r.content);const {error}=await sb.from('knowledge').insert(kk);if(error)throw error;L('Knowledge saved: '+kk.length)}
+    L('Done.');toast('Import finished');
+  }catch(e){L('Stopped: '+(e.message||e))}finally{$('#fgo').disabled=false}
+}
+
+/* ---------- owner views ---------- */
+async function loadOwnerView(){const m=$('#main');
+  if(S.view==='owner'){
+    const [{data:cs},{data:ps}]=await Promise.all([sb.from('companies').select('*'),sb.from('payments').select('*').eq('status','pending')]);
+    const n=s=>(cs||[]).filter(c=>c.status===s).length;
+    m.innerHTML=`<h2>Overview</h2><div class="kpis"><div class="card kpi"><b>${(cs||[]).length}</b><span>Companies</span></div><div class="card kpi"><b>${n('active')}</b><span>Active</span></div><div class="card kpi"><b>${n('pending')}</b><span>Waiting for approval</span></div><div class="card kpi"><b>${(ps||[]).length}</b><span>Payments to check</span></div></div><p class="hint">Open Payments to approve a company after you see the money in your bank.</p>`;return}
+  if(S.view==='ocompanies'){
+    const [{data:cs},{data:pr}]=await Promise.all([sb.from('companies').select('*').order('created_at',{ascending:false}),sb.from('profiles').select('*')]);
+    m.innerHTML=`<h2>Companies</h2><div class="tablebox"><table><thead><tr><th>Company</th><th>Users</th><th>WhatsApp</th><th>Status</th><th>Active until</th><th>Created</th><th></th></tr></thead><tbody>${(cs||[]).map(c=>`<tr><td>${esc(c.name)}</td><td>${(pr||[]).filter(p=>p.company_id===c.id).map(p=>esc(p.email)).join(', ')}</td><td>${esc(c.wa_number)}</td><td><span class="pill ${c.status==='active'?'good':c.status==='pending'?'warn':'bad'}">${esc(c.status)}</span></td><td>${esc(c.active_until||'')}</td><td>${fmt(c.created_at)}</td><td>${c.status==='active'?`<button class="btn small bad" data-st="suspended" data-id="${c.id}">Suspend</button>`:`<button class="btn small" data-st="active" data-id="${c.id}">Activate</button>`}</td></tr>`).join('')||'<tr><td colspan="7">No companies yet.</td></tr>'}</tbody></table></div>`;
+    document.querySelectorAll('[data-st]').forEach(b=>b.onclick=async()=>{const {error}=await sb.rpc('set_company_status',{p_company:b.dataset.id,p_status:b.dataset.st});toast(error?error.message:'Updated');loadOwnerView()});return}
+  if(S.view==='opayments'){
+    const {data}=await sb.from('payments').select('*, companies(name)').order('created_at',{ascending:false});
+    m.innerHTML=`<h2>Payments</h2><div class="tablebox"><table><thead><tr><th>Company</th><th>Amount</th><th>Reference (UTR)</th><th>Note</th><th>When</th><th>Status</th><th></th></tr></thead><tbody>${(data||[]).map(p=>`<tr><td>${esc(p.companies&&p.companies.name)}</td><td>₹${esc(p.amount||'')}</td><td>${esc(p.txn_ref)}</td><td>${esc(p.note)}</td><td>${fmt(p.created_at)}</td><td><span class="pill ${p.status==='approved'?'good':p.status==='rejected'?'bad':'warn'}">${esc(p.status)}</span></td><td>${p.status==='pending'?`<button class="btn small primary" data-ap="${p.id}">Approve 30 days</button> <button class="btn small bad" data-rj="${p.id}">Reject</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7">No payments yet.</td></tr>'}</tbody></table></div><p class="hint">Approve only after the money is in your bank account with the same reference.</p>`;
+    document.querySelectorAll('[data-ap]').forEach(b=>b.onclick=async()=>{const {error}=await sb.rpc('approve_payment',{p_payment:b.dataset.ap,p_days:30});toast(error?error.message:'Approved. The company is now active.');loadOwnerView()});
+    document.querySelectorAll('[data-rj]').forEach(b=>b.onclick=async()=>{const {error}=await sb.rpc('reject_payment',{p_payment:b.dataset.rj});toast(error?error.message:'Rejected');loadOwnerView()});return}
+  if(S.view==='osettings'){
+    m.innerHTML=`<h2>Payment settings</h2><div class="card" style="max-width:560px"><div class="field"><label for="pn">Product name</label><input id="pn" value="${esc(S.pub.product_name)}"></div>
+<div class="field"><label for="pt">Price text shown to buyers</label><input id="pt" value="${esc(S.pub.price_text)}"></div><div class="field"><label for="pa">Price amount (₹)</label><input id="pa" value="${esc(S.pub.price_amount)}"></div>
+<div class="field"><label for="pu">Your UPI ID</label><input id="pu" value="${esc(S.pub.upi_id)}"></div>
+<div class="field"><label for="pq">Your payment QR image (PNG or JPG, under 400 KB)</label><input type="file" id="pq" accept="image/*"></div>
+${S.pub.qr_image?`<img class="qr" src="${esc(S.pub.qr_image)}" alt="Current QR">`:''}<div style="margin-top:1rem"><button class="btn primary" id="psave">Save</button></div></div>`;
+    $('#psave').onclick=async()=>{const rows=[['product_name',$('#pn').value],['price_text',$('#pt').value],['price_amount',$('#pa').value],['upi_id',$('#pu').value]];
+      const f=$('#pq').files[0];if(f){if(f.size>400000)return toast('Image is too large');rows.push(['qr_image',await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(f)})])}
+      const {error}=await sb.from('platform_settings').upsert(rows.map(([key,value])=>({key,value})));if(error)return toast(error.message);rows.forEach(([k,v])=>S.pub[k]=v);toast('Saved');loadOwnerView()};return}
+}
+boot();
+</script>
+</body>
+</html>
