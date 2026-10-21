@@ -181,7 +181,7 @@ function bindPublic(){
         const meta={company:$('#cn').value.trim(),full_name:$('#fn').value.trim(),wa:$('#wa').value.replace(/\D/g,'')};
         const {data,error}=await sb.auth.signUp({email:em,password:pw,options:{data:meta}});
         if(error)throw error;
-        if(!data.session){m.textContent='Account created. Check your email for the confirmation link, then log in here.';S.authTab='login';$('#go').disabled=false;return}
+        if(!data.session){S.authTab='login';render();$('#msg').textContent='Account created. If a confirmation email arrives, open it first. Then log in here with the same email and password.';return}
         S.user=data.user;await autoRegister(meta);await loadMe();render();
       }else{
         const {data,error}=await sb.auth.signInWithPassword({email:em,password:pw});
