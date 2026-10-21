@@ -7,7 +7,7 @@ const SALES = '919800000001';
 const CUST = '919811112222';
 const SECRET = 'testsecret';
 const BASE = { props: { WEBHOOK_SECRET: SECRET, ANTHROPIC_API_KEY: 'k', WA_ACCESS_TOKEN: 't', WA_PHONE_NUMBER_ID: 'phone-id-test', APP_PIN: '123456' },
-               settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES } };
+               settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES, WORK_HOURS: '0-24', ALERT_TEMPLATE: 'none' } };
 
 let n = 0;
 function payload(msgs, contacts) {
@@ -36,9 +36,9 @@ const tests = {
     const env = load({ props: {} });
     ['Leads', 'Messages', 'Log', 'Knowledge', 'Settings', 'Board', 'Webhook Log'].forEach(t => assert(env.sheets[t], t));
     assert(env.props.WEBHOOK_SECRET && env.props.WEBHOOK_SECRET.length > 8);
-    assert.deepStrictEqual(env.triggers.map(t => t.getHandlerFunction()).sort(), ['dailySummary', 'hourlyCheck']);
+    assert.deepStrictEqual(env.triggers.map(t => t.getHandlerFunction()).sort(), ['dailySummary', 'hourlyCheck', 'reminderTick']);
     env.ctx.setup();  // re-running does not duplicate triggers or settings
-    assert.strictEqual(env.triggers.length, 2);
+    assert.strictEqual(env.triggers.length, 3);
     assert.strictEqual(env.sheets['Settings'].rows.filter(r => r[0] === 'BOT_MODE').length, 1);
   },
   'wrong webhook key does nothing'() {
@@ -153,6 +153,74 @@ const tests = {
     const d = lead(env, CUST)['Next Follow-up'];
     assert(Math.abs(d - Date.now() - 7 * 86400000) < 60000);
   },
+  'team alerts: working hours, urgent override, template fallback and held messages'() {
+    const TEAM = '919800000099';
+    const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: TEAM, WORK_HOURS: '9-20', ALERT_TEMPLATE: 'team_lead_alert' } }));
+    const L = { Phone: CUST, Name: 'Ramesh', Category: 'Other' };
+    const at = h => new Date(Date.UTC(2026, 9, 21, h - 5, -30));  // h:00 India time
+    const realNow = Date.now; const T = require('assert');
+    // night, not urgent: nothing is sent
+    Date.now = () => at(23).getTime();
+    env.ctx.alertLead_(L, 'normal lead', false);
+    assert.strictEqual(env.sent.length, 0);
+    // night, urgent, no 24h window: the Utility template goes, the full text is held
+    env.ctx.alertLead_(L, 'HOT lead details', true);
+    assert.strictEqual(env.sent.length, 1);
+    assert.strictEqual(env.sent[0].body.type, 'template');
+    assert.strictEqual(env.sent[0].body.template.name, 'team_lead_alert');
+    assert.deepStrictEqual(env.sent[0].body.template.components[0].parameters.map(p => p.text), ['team', 'Ramesh', CUST]);
+    // the employee replies: held text is delivered, then the command answer
+    post(env, payload([text(TEAM, 'ok')]));
+    const t = texts(env);
+    assert.strictEqual(t[0].text, 'HOT lead details');
+    // inside the window free text is used, and normal alerts wait for working hours
+    env.ctx.alertLead_(L, 'follow-up text', true);
+    assert.strictEqual(texts(env).pop().text, 'follow-up text');
+    const n = env.sent.length;
+    env.ctx.alertLead_(L, 'not urgent at night', false);
+    assert.strictEqual(env.sent.length, n);
+    Date.now = () => at(10).getTime();
+    env.ctx.alertLead_(L, 'not urgent in the morning', false);
+    assert.strictEqual(texts(env).pop().text, 'not urgent in the morning');
+    // STOP silences the employee, START brings alerts back
+    post(env, payload([text(TEAM, 'STOP')]));
+    const m = env.sent.length;
+    env.ctx.alertLead_(L, 'after stop', true);
+    assert.strictEqual(env.sent.length, m);
+    post(env, payload([text(TEAM, 'START')]));
+    env.ctx.alertLead_(L, 'after start', true);
+    assert.strictEqual(texts(env).pop().text, 'after start');
+    Date.now = realNow;
+  },
+  'reminders: every 20 minutes, capped, paused by a reply, stopped by DONE, then one escalation'() {
+    const TEAM = '919800000099', SECOND = '919800000098';
+    const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: TEAM, WORK_HOURS: '9-20', ALERT_TEMPLATE: 'none', REMINDER_MINUTES: '20', REMINDER_MAX: '3',
+                                                            TEAM_ROUTING: JSON.stringify({ All: SECOND }) } }));
+    const realNow = Date.now;
+    const base = new Date(Date.UTC(2026, 9, 21, 5, 0)).getTime();   // 10:30 India time
+    Date.now = () => base;
+    const sh = env.sheets['Leads']; const H = sh.rows[0];
+    const r = H.map(() => ''); r[0] = CUST; r[H.indexOf('Status')] = 'Qualified'; r[H.indexOf('Handoff At')] = new Date(base);
+    r[H.indexOf('Last Inbound')] = new Date(base); sh.rows.push(r);
+    const remindTexts = () => texts(env).filter(x => x.text.includes('Reminder'));
+    const tick = min => { Date.now = () => base + min * 60000; env.ctx.reminderTick(); };
+    tick(10); assert.strictEqual(remindTexts().length, 0, 'too early');
+    tick(21); assert.strictEqual(remindTexts().length, 2, 'both team members, reminder 1');
+    tick(30); assert.strictEqual(remindTexts().length, 2, 'not again before 20 minutes');
+    // SECOND replies: they rest for an hour, the main number keeps getting reminders
+    post(env, payload([text(SECOND, 'on it')]));
+    tick(42); const after = remindTexts().slice(2);
+    assert(after.every(x => x.to === TEAM) && after.length === 1, JSON.stringify(after));
+    tick(63); assert.strictEqual(remindTexts().filter(x => x.text.includes('3/3')).length, 1, 'third and last');
+    tick(90);
+    const esc = texts(env).filter(x => x.text.includes('Nobody has contacted'));
+    assert.strictEqual(esc.length, 1, 'one escalation only'); tick(120);
+    assert.strictEqual(texts(env).filter(x => x.text.includes('Nobody has contacted')).length, 1);
+    // DONE ends it for a new handoff cycle; after hours a normal lead gets nothing, a hot one does
+    env.ctx.upsertLead_(CUST, { 'Last Human Contact': new Date(base + 130 * 60000) }, 'test');
+    const c0 = env.sent.length; tick(140); assert.strictEqual(env.sent.length, c0);
+    Date.now = realNow;
+  },
   'hourly check: unanswered, hot SLA, follow-up due, quiet leads'() {
     const env = load(BASE);
     const sh = env.sheets['Leads']; const H = sh.rows[0];
@@ -227,7 +295,7 @@ const tests = {
     assert(JSON.parse(fresh.ctx.api('', 'claim', '{"newPin":"12"}')).error.includes('4 to 8'));
     assert.strictEqual(JSON.parse(fresh.ctx.api('', 'claim', '{"newPin":"4321"}')).message, 'Connected');
     assert.strictEqual(fresh.props.APP_PIN, '4321');
-    assert.strictEqual(fresh.triggers.length, 2, 'claim installed the timers');
+    assert.strictEqual(fresh.triggers.length, 3, 'claim installed the timers');
     assert.strictEqual(JSON.parse(fresh.ctx.api('9999', 'claim', '{"newPin":"9999"}')).error, 'PIN', 'cannot re-claim');
     const env = load(BASE);
     assert.strictEqual(JSON.parse(env.ctx.api('nope', 'dashboard', '{}')).error, 'PIN');
@@ -506,6 +574,52 @@ const tests = {
     const sentSys = env.claudeCalls[env.claudeCalls.length - 1].body.system[0].text;
     assert(sentSys.includes('ops assistant'), sentSys);
     assert(sentSys.includes('Amitek leads'), 'grounded in the real lead snapshot');
+  },
+  'read-only screens use a short-lived copy of the lead list, and any change drops it'() {
+    const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES } }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    const sh = env.sheets['Leads'];
+    const row = (phone, f) => { const h = sh.rows[0]; sh.rows.push(h.map(c => c === 'Phone' ? phone : (f[c] !== undefined ? f[c] : (c === 'Status' ? 'New' : ''))));};
+    row('919811110031', { Name: 'Asha', City: 'Jaipur', Status: 'Hot', 'Next Follow-up': new Date('2026-10-20T10:00:00Z') });
+    let d = api('dashboard');
+    assert.strictEqual(d.counts.total, 1);
+    assert.strictEqual(d.hot.length, 1);
+    row('919811110032', { Name: 'Ravi', Status: 'Hot' });            // typed into the sheet by hand: not seen until the copy expires
+    assert.strictEqual(api('dashboard').counts.total, 1, 'second call is served from the copy');
+    assert.strictEqual(api('search', { q: 'asha' }).total, 1);
+    assert.strictEqual(api('act', { phone: '919811110031', cmd: 'DONE', note: 'called' }).message.length > 0, true);
+    assert.strictEqual(api('dashboard').counts.total, 2, 'a change from the app drops the copy');
+    row('919811110033', { Name: 'Meena', Status: 'Hot' });
+    env.ctx.upsertLead_('919811110034', { Name: 'Kiran' }, 'bot');   // a customer message changes a lead
+    assert.strictEqual(api('dashboard').counts.total, 4, 'a change from the bot drops the copy too');
+    d = api('search', { q: 'asha' });
+    assert.strictEqual(d.leads[0].name, 'Asha');
+    assert(d.leads[0].next === null || typeof d.leads[0].next === 'string');
+  },
+  'assistant knows the whole lead sheet, not only the active snapshot'() {
+    const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES } }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    const sh = env.sheets['Leads'];
+    const row = (phone, f) => { const h = sh.rows[0]; sh.rows.push(h.map(c => c === 'Phone' ? phone : (f[c] !== undefined ? f[c] : (c === 'Status' ? 'New' : ''))));};
+    row('919811110041', { Name: 'Vikas', City: 'Jaipur', Status: 'Hot', Category: 'Dealer' });
+    row('2348011110042', { Name: 'Chidi', Status: 'Replied' });
+    row('2348011110043', { Name: 'Ngozi', Status: 'New' });
+    row('2347011110044', { Name: 'Emeka', Status: 'Lost', 'Opt-in': 'Opted out' });
+    row('256700000045', { Name: 'Okello', Status: 'Replied' });
+    env.claude.push(say('You have 5 leads in total, 3 of them in Nigeria.'));
+    const r = api('assistant', { text: 'how many nigeria leads do we have in total, and what about 9811110041' });
+    assert.strictEqual(r.reply, 'You have 5 leads in total, 3 of them in Nigeria.');
+    const sys = env.claudeCalls[env.claudeCalls.length - 1].body.system[0].text;
+    assert(sys.includes('Whole lead sheet: 5 leads in total'), sys);
+    assert(sys.includes('Nigeria 3'), 'country totals are in the prompt');
+    assert(sys.includes('Opted out: 1'), 'closed and opted-out leads count too');
+    assert(sys.includes('Nigeria: 3 leads'), 'the country the question names is spelled out');
+    assert(sys.includes('Vikas') && sys.includes('+919811110041'), 'the lead whose number was typed is attached');
+    assert(sys.includes('EVERY lead'), 'told that the totals cover the whole sheet');
+    // a number that is not in the sheet is said so, not guessed
+    env.claude.push(say('That number is not in the sheet.'));
+    api('assistant', { text: 'what about 9660031171' });
+    assert(env.claudeCalls[env.claudeCalls.length - 1].body.system[0].text.includes('No lead in the sheet has a number containing 9660031171'));
   },
   'campaign pauses itself when WhatsApp refuses the template'() {
     const env = load(BASE);

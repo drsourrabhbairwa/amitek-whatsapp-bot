@@ -54,6 +54,11 @@ var DEFAULT_SETTINGS = {
   UNANSWERED_ALERT_MINUTES: '30',
   HUMAN_TAKEOVER_HOURS: '12',
   QUIET_DAYS: '3',
+  WORK_HOURS: '9-20',                // team reminders go out only between these India hours; urgent (hot) alerts ignore it
+  REMINDER_MINUTES: '20',            // gap between reminders to the team for a lead nobody has contacted
+  REMINDER_MAX: '6',                 // reminders per lead, then the main salesperson is told once
+  ALERT_TEMPLATE: 'team_lead_alert', // type none to turn off. Utility template used to reach a team member whose 24-hour WhatsApp window is closed ({{1}} team, {{2}} customer, {{3}} number)
+  ALERT_TEMPLATE_LANG: 'en',
   DAILY_SUMMARY_HOUR: '9',
   WA_API_URL: 'https://crmapi.bluetickapi.com/api/meta',
   WA_API_VERSION: 'v19.0',
@@ -172,6 +177,7 @@ function upsertLead_(phone, fields, actor) {
   } else {
     sh.appendRow(values[0]);
   }
+  if (typeof dropLeadsCache_ === 'function') dropLeadsCache_();
   if (changes.length) logChange_(phone, actor || 'system', changes.join('; '));
   return lead;
 }
@@ -711,7 +717,12 @@ function handleEcho_(e) {
 function handleInbound_(m) {
   if (!m.phone) return;
   if (isTeam_(m.phone)) {
-    if (addMessage_(m.phone, 'in', 'sales', m.text, m.id)) waText_(m.phone, salesCommand_(m.text, m.phone));
+    if (addMessage_(m.phone, 'in', 'sales', m.text, m.id)) {
+      var tword = String(m.text).trim().toLowerCase().replace(/[.!]+$/, '');
+      var tnote = teamHeardFrom_(m.phone, tword);
+      if (tnote) waText_(m.phone, tnote);
+      else { teamFlushHeld_(m.phone); waText_(m.phone, salesCommand_(m.text, m.phone)); }
+    }
     return;
   }
   if (!addMessage_(m.phone, 'in', 'lead', m.text, m.id)) return;  // duplicate delivery
@@ -833,11 +844,99 @@ function categoriesOf_(phone) {
   if ((r['All'] || []).indexOf(phone) >= 0) return [];
   return Object.keys(r).filter(function (c) { return r[c].indexOf(phone) >= 0; });
 }
-function alertLead_(lead, text) {
+function alertLead_(lead, text, urgent) {
   if (typeof tgAlert_ === 'function') tgAlert_(text);
   var to = recipientsFor_(lead);
   if (!to.length) { console.warn('No team number set; alert: ' + text); return; }
-  to.forEach(function (p) { waText_(p, text); });
+  to.forEach(function (p) { teamPing_(p, text, lead, urgent); });
+}
+
+// ---- reaching team members on WhatsApp: working hours, the 24-hour window, and the Utility-template fallback
+function workOpen_(now) {
+  var m = String(setting_('WORK_HOURS') || '').match(/^(\d{1,2})\s*-\s*(\d{1,2})$/);
+  if (!m) return true;
+  var from = parseInt(m[1], 10), to = parseInt(m[2], 10);
+  if (from >= to) return true;
+  var h = new Date((now || new Date(Date.now())).getTime() + IST_MS).getUTCHours();
+  return h >= from && h < to;
+}
+function teamProp_(key) { return Number(PropertiesService.getScriptProperties().getProperty(key) || 0); }
+function teamSet_(key, v) { PropertiesService.getScriptProperties().setProperty(key, String(v)); }
+function teamWindowOpen_(phone) { return Date.now() - teamProp_('TEAMWIN_' + phone) < 23.5 * 3600000; }
+function teamStopped_(phone) { return teamProp_('TEAMSTOP_' + phone) === 1; }
+function teamPaused_(phone) { return teamProp_('TEAMPAUSE_' + phone) > Date.now(); }
+
+function waTemplate_(to, name, lang, params) {
+  return waPost_({ messaging_product: 'whatsapp', recipient_type: 'individual', to: to, type: 'template',
+    template: { name: name, language: { code: lang || 'en' },
+      components: [{ type: 'body', parameters: params.map(function (t) { return { type: 'text', text: String(t) }; }) }] } });
+}
+
+/** One WhatsApp message to a team member. Normal hours only, unless urgent. Free text inside their 24-hour window;
+ *  outside it the approved Utility template goes first and the full text is held until they reply. */
+function teamPing_(to, text, lead, urgent) {
+  if (teamStopped_(to)) return false;
+  if (!urgent && !workOpen_()) return false;
+  if (teamWindowOpen_(to)) return !!waText_(to, text);
+  var tpl = setting_('ALERT_TEMPLATE');
+  if (!tpl || tpl === 'none' || !lead) return !!waText_(to, text);
+  var props = PropertiesService.getScriptProperties();
+  var held = []; try { held = JSON.parse(props.getProperty('TEAMPEND_' + to) || '[]'); } catch (err) { held = []; }
+  held.push(String(text).slice(0, 900));
+  props.setProperty('TEAMPEND_' + to, JSON.stringify(held.slice(-5)));
+  var id = waTemplate_(to, tpl, setting_('ALERT_TEMPLATE_LANG'),
+      ['team', lead['Name'] || lead['Business'] || 'a customer', String(lead['Phone'] || '')]);
+  return !!id;
+}
+
+/** A team member wrote in: their 24-hour window is open, held alerts are delivered, reminders rest for an hour. */
+function teamHeardFrom_(phone, word) {
+  teamSet_('TEAMWIN_' + phone, Date.now());
+  teamSet_('TEAMPAUSE_' + phone, Date.now() + 3600000);
+  if (word === 'stop') { teamSet_('TEAMSTOP_' + phone, 1); return 'Alerts stopped for this number. Send START to get them again.'; }
+  if (word === 'start') { teamSet_('TEAMSTOP_' + phone, 0); return 'Alerts are on again. Reply DONE <number> after each call.'; }
+  if (teamStopped_(phone)) teamSet_('TEAMSTOP_' + phone, 0);
+  return '';
+}
+function teamFlushHeld_(phone) {
+  var props = PropertiesService.getScriptProperties(), held = [];
+  try { held = JSON.parse(props.getProperty('TEAMPEND_' + phone) || '[]'); } catch (err) { held = []; }
+  if (!held.length) return;
+  props.deleteProperty('TEAMPEND_' + phone);
+  waText_(phone, held.join('\n\n'));
+}
+
+/** Every 10 minutes: a handed-over lead nobody has contacted gets a reminder every REMINDER_MINUTES, up to REMINDER_MAX,
+ *  in working hours (hot leads at any hour). After the last one the main salesperson is told once. */
+function reminderTick() {
+  var now = new Date(Date.now()), open = workOpen_(now), props = PropertiesService.getScriptProperties();
+  var st = {}; try { st = JSON.parse(props.getProperty('REMINDERS') || '{}') || {}; } catch (err) { st = {}; }
+  var gap = settingNum_('REMINDER_MINUTES') * 60000, max = settingNum_('REMINDER_MAX'), sent = 0, escalated = 0;
+  activeLeads_().forEach(function (l) {
+    var phone = String(l['Phone']), handoff = asDate_(l['Handoff At']), human = asDate_(l['Last Human Contact']);
+    if (['Hot', 'Qualified'].indexOf(String(l['Status'])) < 0 || !handoff) return;
+    if (human && human >= handoff) { delete st[phone]; return; }
+    var urgent = l['Status'] === 'Hot';
+    if (!open && !urgent) return;
+    var s = st[phone];
+    if (!s || s.since !== handoff.getTime()) s = st[phone] = { since: handoff.getTime(), n: 0, at: handoff.getTime() };
+    if (now.getTime() - s.at < gap) return;
+    if (s.n >= max) {
+      if (!s.esc) {
+        s.esc = 1; escalated++;
+        var main = normPhone_(setting_('SALES_WHATSAPP'));
+        if (main) teamPing_(main, '🚨 Nobody has contacted ' + label_(l) + ' after ' + max + ' reminders. Please call them or reassign.', l, true);
+      }
+      return;
+    }
+    var text = '⏰ *Reminder ' + (s.n + 1) + '/' + max + '*: nobody has contacted ' + label_(l) + ' yet.\n' +
+               (l['Follow-up Note'] ? l['Follow-up Note'] + '\n' : '') + 'Reply DONE ' + String(l['Phone']).slice(-10) + ' after you call.';
+    var any = false;
+    recipientsFor_(l).forEach(function (p) { if (!teamPaused_(p) && teamPing_(p, text, l, urgent)) any = true; });
+    if (any) { s.n++; s.at = now.getTime(); sent++; }
+  });
+  props.setProperty('REMINDERS', JSON.stringify(st));
+  return { reminders: sent, escalated: escalated };
 }
 
 function notifySales_(lead, h) {
@@ -845,7 +944,7 @@ function notifySales_(lead, h) {
       .filter(function (x) { return x && x !== 'Other'; }).join(' | ');
   alertLead_(lead, '*' + (h.priority === 'hot' ? '🔥 HOT LEAD' : '📋 New lead for follow-up') + '*\n' + label_(lead) +
               (details ? '\n' + details : '') + '\n\n' + h.summary + '\n_Why now:_ ' + h.reason +
-              '\n\nReply DONE ' + String(lead['Phone']).slice(-10) + ' after you call.');
+              '\n\nReply DONE ' + String(lead['Phone']).slice(-10) + ' after you call.', h.priority === 'hot');
 }
 
 // ===================================================================== tracking
@@ -860,14 +959,14 @@ function activeLeads_() {
 
 /** Hourly: unanswered chats, hot leads not contacted, follow-ups due, quiet leads. */
 function hourlyCheck() {
-  var now = new Date();
+  var now = new Date(), open = workOpen_(now);
   var unanswered = [], hot = [], due = [];
   activeLeads_().forEach(function (l) {
     var phone = String(l['Phone']);
     var lastIn = asDate_(l['Last Inbound']), lastOut = asDate_(l['Last Outbound']), human = asDate_(l['Last Human Contact']);
     var answered = [lastOut, human].filter(Boolean).sort(function (a, b) { return b - a; })[0] || null;
 
-    if (lastIn && (!answered || answered < lastIn) && now - lastIn >= settingNum_('UNANSWERED_ALERT_MINUTES') * 60000) {
+    if (open && lastIn && (!answered || answered < lastIn) && now - lastIn >= settingNum_('UNANSWERED_ALERT_MINUTES') * 60000) {
       var ua = asDate_(l['Unanswered Alerted']);
       if (!ua || ua < lastIn) { unanswered.push(l); upsertLead_(phone, { 'Unanswered Alerted': now }, 'system'); }
     }
@@ -879,6 +978,7 @@ function hourlyCheck() {
       }
     }
     var nf = asDate_(l['Next Follow-up']);
+    if (!open) return;
     if (nf && nf <= now) {
       var fa = asDate_(l['Followup Alerted']);
       if (!fa || fa < nf) { due.push(l); upsertLead_(phone, { 'Followup Alerted': now }, 'system'); }
@@ -902,7 +1002,7 @@ function hourlyCheck() {
     if (b.due.length) parts.push('*📅 Follow-up due now:*\n' + b.due.map(function (l) {
       return '• ' + label_(l) + (l['Follow-up Note'] ? ' - ' + l['Follow-up Note'] : '');
     }).join('\n'));
-    if (parts.length) waText_(p, parts.join('\n\n') + '\n\n_Reply DONE <number> after you call. HELP for commands._');
+    if (parts.length) teamPing_(p, parts.join('\n\n') + '\n\n_Reply DONE <number> after you call. HELP for commands._', box[p].hot[0] || box[p].unanswered[0] || box[p].due[0], !!b.hot.length);
   });
   refreshBoard_();
   return { unanswered: unanswered.length, hot_overdue: hot.length, follow_ups_due: due.length };
@@ -912,10 +1012,13 @@ function hourlyCheck() {
  *  teammate, grounded only in their own current lead snapshot (never invented numbers/names). */
 function assistantFallback_(text, from) {
   try {
-    var snapshot = pendingReport_(categoriesOf_(from));
+    var cats = categoriesOf_(from);
+    var snapshot = pendingReport_(cats);
+    if (typeof leadOverview_ === 'function') snapshot += '\n\n' + leadOverview_(text, cats);
     var sys = [
       'You are Amitek\'s internal ops assistant, chatting with the sales team inside their own app (never the customer).',
-      'Answer only from the lead snapshot below - never invent names, numbers, dates or details that are not in it.',
+      'Answer only from the snapshot, the whole-sheet totals and the matching leads below - never invent names, numbers, dates or details that are not in them.',
+      'The whole-sheet totals cover EVERY lead (closed and opted-out too); the snapshot only covers active ones. If a number or lead is in neither, say it is not in the sheet.',
       'You cannot perform actions yourself here. If they ask to do something, tell them the exact command to type:',
       'DONE <phone>, LATER <phone> [days], WON <phone>, LOST <phone> reason, LIST, CAMPAIGNS,',
       'or describe who and when for a campaign, e.g. "applicators ko monday 11 baje message bhejo".',
@@ -1066,9 +1169,10 @@ function setup() {
   if (!props.getProperty('WEBHOOK_SECRET')) props.setProperty('WEBHOOK_SECRET', Utilities.getUuid().replace(/-/g, ''));
 
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (['hourlyCheck', 'dailySummary'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
+    if (['hourlyCheck', 'dailySummary', 'reminderTick'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('hourlyCheck').timeBased().everyHours(1).create();
+  ScriptApp.newTrigger('reminderTick').timeBased().everyMinutes(10).create();
   ScriptApp.newTrigger('dailySummary').timeBased().atHour(settingNum_('DAILY_SUMMARY_HOUR')).everyDays(1)
       .inTimezone('Asia/Kolkata').create();
   refreshBoard_();
@@ -1119,8 +1223,11 @@ function api(pin, action, argsJson) {
     cache.put('pin_fails', String(fails + 1), 3600);
     return JSON.stringify({ error: 'PIN', message: 'Wrong PIN' });
   }
-  // slow AI actions only append rows, so they run without holding up incoming WhatsApp messages
-  var lock = { sortRun: 1, learnChats: 1, learnText: 1 }[action] ? { releaseLock: function () {} } : LockService.getScriptLock();
+  // Slow AI actions only append rows, and the screens below only read, so none of them waits behind (or holds up)
+  // an incoming WhatsApp message. Everything else that writes still takes the one script lock.
+  var readOnly = !!{ dashboard: 1, search: 1, lead: 1, settings: 1, status: 1, cleanCheck: 1, tgStatus: 1 }[action];
+  var lock = (readOnly || { sortRun: 1, learnChats: 1, learnText: 1 }[action])
+    ? { releaseLock: function () {} } : LockService.getScriptLock();
   if (lock.waitLock) lock.waitLock(25000);
   try {
     var fn = APP_ACTIONS[action] || (typeof GROW_ACTIONS !== 'undefined' && GROW_ACTIONS[action]) ||
@@ -1131,6 +1238,7 @@ function api(pin, action, argsJson) {
     console.error('app ' + action + ' failed: ' + (err && err.stack));
     return JSON.stringify({ error: String(err && err.message || err) });
   } finally {
+    if (!readOnly) dropLeadsCache_();   // something may have changed a lead
     lock.releaseLock();
   }
 }
@@ -1143,6 +1251,112 @@ function allLeads_() {
   return sh.getRange(2, 1, sh.getLastRow() - 1, LEAD_COLS.length).getValues().map(function (r) {
     var l = {}; LEAD_COLS.forEach(function (c, j) { l[c] = r[j]; }); return l;
   }).filter(function (l) { return l['Phone']; });
+}
+
+/** A short-lived copy of the lead list for the read-only screens (dashboard, search, assistant), so each tap does not
+ *  re-read the whole sheet. The cache holds about 100 KB per key, so the list is stored in pieces. Anything that
+ *  changes leads calls dropLeadsCache_(); a hand-edit made directly in the sheet shows up within LEADS_CACHE_SECONDS. */
+var LEADS_CACHE_SECONDS = 25;
+var LEADS_CACHE_PIECE = 30000;   // characters; multi-byte text can take 3 bytes each, so this stays under 100 KB
+var LEADS_CACHE_MAX_PIECES = 30;
+function reviveDates_(k, v) {
+  return typeof v === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(v) ? new Date(v) : v;
+}
+function dropLeadsCache_() {
+  try { CacheService.getScriptCache().put('leads_n', '0', 1); } catch (err) { /* the cache is only a speed-up */ }
+}
+function allLeadsCached_() {
+  var cache = CacheService.getScriptCache();
+  try {
+    var n = Number(cache.get('leads_n') || 0), parts = [];
+    for (var i = 0; i < n; i++) {
+      var p = cache.get('leads_' + i);
+      if (p === null || p === undefined) { parts = null; break; }
+      parts.push(p);
+    }
+    if (n > 0 && parts) return JSON.parse(parts.join(''), reviveDates_);
+  } catch (err) { /* fall through and read the sheet */ }
+  var leads = allLeads_();
+  try {
+    var json = JSON.stringify(leads), count = Math.ceil(json.length / LEADS_CACHE_PIECE);
+    if (count > 0 && count <= LEADS_CACHE_MAX_PIECES) {
+      for (var j = 0; j < count; j++) cache.put('leads_' + j, json.slice(j * LEADS_CACHE_PIECE, (j + 1) * LEADS_CACHE_PIECE), LEADS_CACHE_SECONDS + 10);
+      cache.put('leads_n', String(count), LEADS_CACHE_SECONDS);   // expires first, so a half-expired set is never read
+    }
+  } catch (err) { /* too big or the cache is full: just run uncached */ }
+  return leads;
+}
+
+var COUNTRY_CODES = { '91': 'India', '234': 'Nigeria', '254': 'Kenya', '256': 'Uganda', '233': 'Ghana', '27': 'South Africa',
+  '63': 'Philippines', '971': 'UAE', '966': 'Saudi Arabia', '255': 'Tanzania', '260': 'Zambia', '263': 'Zimbabwe', '20': 'Egypt',
+  '92': 'Pakistan', '880': 'Bangladesh', '977': 'Nepal', '94': 'Sri Lanka', '44': 'UK', '65': 'Singapore', '60': 'Malaysia',
+  '62': 'Indonesia', '974': 'Qatar', '968': 'Oman', '965': 'Kuwait', '973': 'Bahrain' };
+function countryOf_(phone) {
+  var p = String(phone || '');
+  return COUNTRY_CODES[p.slice(0, 3)] || COUNTRY_CODES[p.slice(0, 2)] || 'Other';
+}
+function countBy_(leads, fn) {
+  var m = {};
+  leads.forEach(function (l) { var k = fn(l) || '(blank)'; m[k] = (m[k] || 0) + 1; });
+  return Object.keys(m).map(function (k) { return [k, m[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
+}
+function countLine_(pairs, max) {
+  return pairs.slice(0, max || 8).map(function (p) { return p[0] + ' ' + p[1]; }).join(', ');
+}
+function leadLine_(l) {
+  var next = asDate_(l['Next Follow-up']), lastIn = asDate_(l['Last Inbound']);
+  return [String(l['Name'] || l['Business'] || 'Lead'), l['Business'] && l['Name'] ? '(' + l['Business'] + ')' : '',
+    '+' + l['Phone'], l['City'] || '', l['Category'], 'status ' + (l['Status'] || '-'), 'stage ' + (l['Stage'] || '-'),
+    next ? 'follow-up ' + fmt_(next) : '', lastIn ? 'last wrote ' + fmt_(lastIn) : 'never wrote',
+    l['Requirement'] ? 'wants: ' + String(l['Requirement']).slice(0, 80) : ''].filter(String).join(' | ');
+}
+/** Totals over the WHOLE lead sheet (closed and opted-out leads too), plus the leads the question is about.
+ *  `cats` limits it to a teammate's own categories, like the rest of the assistant. */
+function leadOverview_(text, cats) {
+  var all = allLeadsCached_().filter(function (l) { return !cats || !cats.length || cats.indexOf(String(l['Category'] || 'Other')) >= 0; });
+  var now = Date.now(), week = now - 7 * 86400000;
+  var out = ['Whole lead sheet: ' + all.length + ' leads in total.',
+    'By status: ' + countLine_(countBy_(all, function (l) { return l['Status']; }), 10),
+    'By category: ' + countLine_(countBy_(all, function (l) { return l['Category']; }), 10),
+    'By country: ' + countLine_(countBy_(all, function (l) { return countryOf_(l['Phone']); }), 10),
+    'Opted out: ' + all.filter(function (l) { return l['Opt-in'] === 'Opted out'; }).length +
+      '. Wrote to us in the last 7 days: ' + all.filter(function (l) { var d = asDate_(l['Last Inbound']); return d && d >= week; }).length +
+      '. Never wrote: ' + all.filter(function (l) { return !asDate_(l['Last Inbound']); }).length +
+      '. Added in the last 7 days: ' + all.filter(function (l) { var d = asDate_(l['Created']); return d && d >= week; }).length + '.'];
+  var q = String(text || '').toLowerCase(), picked = [], why = [];
+  var digits = (q.match(/\d[\d\s\-+]{5,}\d/g) || []).map(function (s) { return s.replace(/\D/g, ''); }).filter(function (s) { return s.length >= 6; });
+  digits.forEach(function (d) {
+    var hit = all.filter(function (l) { return String(l['Phone']).indexOf(d) >= 0; });
+    why.push(hit.length ? '' : 'No lead in the sheet has a number containing ' + d + '.');
+    picked = picked.concat(hit);
+  });
+  Object.keys(COUNTRY_CODES).forEach(function (code) {
+    var name = COUNTRY_CODES[code];
+    if (q.indexOf(name.toLowerCase()) < 0) return;
+    var hit = all.filter(function (l) { return countryOf_(l['Phone']) === name; });
+    why.push(name + ': ' + hit.length + ' leads (' + countLine_(countBy_(hit, function (l) { return l['Status']; }), 6) + ').');
+    picked = picked.concat(hit.slice(0, 5));
+  });
+  CATEGORIES.forEach(function (c) {
+    if (q.indexOf(c.toLowerCase()) < 0) return;
+    var hit = all.filter(function (l) { return l['Category'] === c; });
+    why.push(c + ': ' + hit.length + ' leads (' + countLine_(countBy_(hit, function (l) { return l['Status']; }), 6) + ').');
+    picked = picked.concat(hit.slice(0, 5));
+  });
+  var cities = {};
+  all.forEach(function (l) { var c = String(l['City'] || '').trim(); if (c.length >= 3) cities[c.toLowerCase()] = c; });
+  Object.keys(cities).forEach(function (k) {
+    if (q.indexOf(k) < 0) return;
+    var hit = all.filter(function (l) { return String(l['City'] || '').trim().toLowerCase() === k; });
+    why.push('City ' + cities[k] + ': ' + hit.length + ' leads (' + countLine_(countBy_(hit, function (l) { return l['Status']; }), 6) + ').');
+    picked = picked.concat(hit.slice(0, 5));
+  });
+  why = why.filter(String);
+  if (why.length) out.push('About this question: ' + why.join(' '));
+  var seen = {}, lines = [];
+  picked.forEach(function (l) { if (!seen[l['Phone']] && lines.length < 8) { seen[l['Phone']] = 1; lines.push('- ' + leadLine_(l)); } });
+  if (lines.length) out.push('Matching leads (up to 8):\n' + lines.join('\n'));
+  return out.join('\n');
 }
 
 function need_(l, now) {
@@ -1280,7 +1494,7 @@ var APP_ACTIONS = {
 
   dashboard: function () {
     var now = new Date();
-    var leads = allLeads_();
+    var leads = allLeadsCached_();
     var active = leads.filter(function (l) { return l['Status'] && l['Status'] !== 'New' && CLOSED.indexOf(l['Status']) < 0; });
     var cards = active.map(function (l) { return card_(l, now); });
     function pick(need) {
@@ -1308,7 +1522,7 @@ var APP_ACTIONS = {
     var digits = q.replace(/\D/g, '');
     var now = new Date();
     var status = a.status || '';
-    var out = allLeads_().filter(function (l) {
+    var out = allLeadsCached_().filter(function (l) {
       if (status && l['Status'] !== status) return false;
       if (!q) return true;
       if (digits.length >= 4 && String(l['Phone']).indexOf(digits) >= 0) return true;
