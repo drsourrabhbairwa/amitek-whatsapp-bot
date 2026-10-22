@@ -134,6 +134,14 @@ def main() -> int:
 
 if __name__ == "__main__":
     code = main()
+    # Close the pool before the interpreter shuts down. Python 3.14 refuses to
+    # join a thread during finalization, so leaving it open prints an alarming
+    # PythonFinalizationError traceback after a run that actually succeeded.
+    try:
+        from app import db as _db
+        _db.close()
+    except Exception:  # noqa: BLE001
+        pass
     try:
         Path(__file__).resolve().parent.parent.joinpath("check_log.txt").write_text(
             "\n".join(LINES), encoding="utf-8"
