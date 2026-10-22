@@ -3,6 +3,8 @@ __pycache__/
 .env
 *.db
 .pytest_cache/
+.venv/
+service/.venv/
 
 # never commit secrets or lead data (this repo is public)
 .env*
