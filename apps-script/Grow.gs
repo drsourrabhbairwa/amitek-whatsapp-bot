@@ -292,11 +292,16 @@ function sendBatch_(c, max) {
   return { sent: sent, failed: failed };
 }
 
-/** Called when a lead is added in the app: an always-on welcome campaign greets them right away. */
-function welcomeNewLead_() {
-  var on = rowsAsObjects_(campaignsSheet_(), CAMPAIGN_COLS).some(function (c) {
+/** Is an always-on welcome campaign running? It greets every lead added from now on, by itself. */
+function welcomeRunning_() {
+  return rowsAsObjects_(campaignsSheet_(), CAMPAIGN_COLS).some(function (c) {
     return c['Status'] === 'Running' && cleanFilter_(JSON.parse(c['Filter'] || '{}')).keepOn;
   });
+}
+
+/** Called when a lead is added in the app: an always-on welcome campaign greets them right away. */
+function welcomeNewLead_() {
+  var on = welcomeRunning_();
   if (!on || !sendEnabled_()) return false;
   try { return campaignTick_().sent > 0; } catch (err) { console.error('welcome failed: ' + err); return false; }
 }
@@ -594,7 +599,7 @@ function applySort_(row, category) {
 
 // ===================================================================== pitch by category
 /** What each type of lead is offered: the opening template and what the bot steers the chat towards. Editable in Settings. */
-var COMMON_TEMPLATE = 'amitek_intro';  // one approved opener for everyone; the bot tailors the pitch to the category once they reply
+var COMMON_TEMPLATE = 'amitek_welcome';  // the one approved opener everyone gets; the bot tailors the pitch to the category once they reply
 var COMMON_TEXT = 'Hello {{1}}, this is Amitek (APP Paints Chemicals Pvt. Ltd.). We make waterproofing, coatings and construction chemicals, and for builders and architects we also offer seamless flooring, home automation and CCTV solutions. 25+ years of manufacturing and field expertise, 1000+ contractors and dealers across India and overseas, Govt. Approved Star Export House. Tell us in one line what work you do and how we can help you.';
 var PLAYBOOK_DEFAULTS = {
   'Applicator': { template: COMMON_TEMPLATE, text: COMMON_TEXT, pitch:
@@ -1179,5 +1184,29 @@ function followupTick_() {
     }
     if (sent) alertSales_('🔁 Follow-ups sent: ' + sent + ' (to people who have not replied).');
     return { sent: sent, failed: failed };
+  } finally { lock.releaseLock(); }
+}
+
+// ===================================================================== autopilot
+/**
+ * AUTOPILOT: every hour the AI reads leads that have no category and files them by itself, instead of waiting for
+ * someone to tap Approve in Learn > Sort leads. An always-on welcome campaign then greets them with nobody watching.
+ * Leads the AI reads as "Other" (not a trade lead) are still left alone, and nothing here sends a message: the
+ * campaign does that, inside the daily limit and the sending hours.
+ */
+function autopilotTick_() {
+  if (!isOn_(growSetting_('AUTOPILOT'))) return { sorted: 0, reason: 'off' };
+  if (!secret_(aiKeyName_())) return { sorted: 0, reason: 'no AI key' };
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return { sorted: 0, reason: 'busy' };
+  try {
+    var r = sortRun_(50);
+    var n = 0;
+    rowsAsObjects_(sortingSheet_(), SORT_COLS).forEach(function (row) {
+      if (row['Status'] !== 'Suggested') return;
+      if (!applySort_(row._row, '')) n++;
+    });
+    if (n) logChange_('', 'autopilot', 'Filed ' + n + ' new leads into categories by itself');
+    return { sorted: n, read: r.tried || 0 };
   } finally { lock.releaseLock(); }
 }

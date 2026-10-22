@@ -652,6 +652,35 @@ const tests = {
     env.ctx.campaignTick();
     assert.strictEqual(env.sent.length, 1, 'nobody greeted twice');
   },
+  'autopilot: the AI files new leads by itself and the welcome campaign greets them, with nobody tapping anything'() {
+    const env = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES, AUTOPILOT: 'true', CAMPAIGN_HOURS: '0-24' } }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    const id = api('campaignSave', { name: 'Welcome', template: 'auto', filter: { keepOn: true } }).id;
+    api('campaignStart', { id });
+    // importing is allowed while only a welcome campaign runs: greeting new leads is what it is for
+    const imp = api('importLeads', { rows: [{ phone: '9833330001', business: 'Nexara Global' }, { phone: '9833330002', business: 'Karyashalla' }] });
+    assert.strictEqual(imp.added, 2, JSON.stringify(imp));
+    assert(imp.welcome, 'the import says these leads will be greeted on their own');
+    assert.strictEqual(env.sent.length, 0, 'leads with no category are not messaged yet');
+    env.claude.push(say('[{"i":0,"category":"Dealer","why":"hardware shop"},{"i":1,"category":"Other","why":"institute"}]'));
+    env.ctx.hourlyCheck();            // the hourly timer: autopilot files them, no Approve needed
+    assert.strictEqual(lead(env, '919833330001').Category, 'Dealer', 'filed by itself');
+    assert.strictEqual(lead(env, '919833330002').Category, 'Other', 'not a trade lead: left alone');
+    env.ctx.campaignTick();
+    assert.deepStrictEqual(env.sent.map(s => s.body.to), ['919833330001'], 'only the filed lead is greeted');
+    assert.strictEqual(env.sent[0].body.template.name, 'amitek_welcome', "the Dealer category's template");
+    // with autopilot off nothing is filed on its own
+    const env2 = load(Object.assign({}, BASE, { settings: { SEND_ENABLED: 'true', SALES_WHATSAPP: SALES, AUTOPILOT: 'false' } }));
+    const api2 = (a, x) => JSON.parse(env2.ctx.api('123456', a, JSON.stringify(x || {})));
+    api2('importLeads', { rows: [{ phone: '9833330003', business: 'Nexara Global' }] });
+    env2.claude.push(say('[{"i":0,"category":"Dealer","why":"shop"}]'));
+    env2.ctx.hourlyCheck();
+    assert.strictEqual(lead(env2, '919833330003').Category, 'Other', 'waits for someone to approve');
+    // a bulk campaign still holds imports back, so a big list is never messaged by surprise
+    const bulk = api('campaignSave', { name: 'Bulk', template: 'amitek_welcome', filter: {} }).id;
+    api('campaignStart', { id: bulk });
+    assert(api('importLeads', { rows: [{ phone: '9833330004' }] }).error, 'import waits for the bulk campaign');
+  },
   'learning: suggestions from chats and taught text need approval before the bot uses them'() {
     const env = load(BASE);
     const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
@@ -769,7 +798,7 @@ const tests = {
     const byTpl = {}; env.sent.filter(m => m.body.type === 'template').forEach(m => { byTpl[m.body.to] = m.body.template.name; });
     assert.strictEqual(byTpl['919811110001'], 'amitek_applicator');
     assert.strictEqual(byTpl['919811110003'], 'amitek_builder');
-    assert.strictEqual(byTpl['919811110004'], 'amitek_intro', 'every category starts with the common template');
+    assert.strictEqual(byTpl['919811110004'], 'amitek_welcome', 'every category starts with the common template');
     assert(!byTpl['919811110002'], 'already messaged leads are not messaged again');
     // same thing from the app
     env.sent.length = 0;
@@ -924,7 +953,7 @@ const tests = {
     const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
     const book = api('playbook').playbook;
     ['Applicator', 'End Client', 'Builder', 'Architect', 'Contractor', 'Dealer'].forEach(c => {
-      assert.strictEqual(book[c].template, 'amitek_intro', c); assert.strictEqual(book[c].language, 'hi');
+      assert.strictEqual(book[c].template, 'amitek_welcome', c); assert.strictEqual(book[c].language, 'hi');
       assert(book[c].text.includes('{{1}}') && book[c].pitch.length > 20, c);
     });
     assert.strictEqual(book['Manufacturer'].template, '', 'categories without a pitch get nothing by default');

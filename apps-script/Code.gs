@@ -49,6 +49,7 @@ var DEFAULT_SETTINGS = {
   QUIET_DAYS: '3',
   WORK_HOURS: '9-20',                // team reminders go out only between these India hours; urgent (hot) alerts ignore it
   REMINDER_MINUTES: '20',            // gap between reminders to the team for a lead nobody has contacted
+  AUTOPILOT: 'false',                // true = every hour the AI files new leads into categories by itself, so an always-on welcome campaign can greet them with nobody tapping Approve
   FOLLOWUP_STEPS: '',                // follow-ups for leads who never replied: "days:template, days:template", e.g. "3:amitek_followup1, 8:amitek_followup2" (blank = off, at most 4)
   FOLLOWUP_LANG: 'en',               // language of the follow-up templates (each takes just {{1}})
   REMINDER_MAX: '6',                 // reminders per lead, then the main salesperson is told once
@@ -954,6 +955,7 @@ function activeLeads_() {
 
 /** Hourly: unanswered chats, hot leads not contacted, follow-ups due, quiet leads. */
 function hourlyCheck() {
+  try { autopilotTick_(); } catch (err) { console.error('autopilotTick_ failed: ' + err); }
   try { followupTick_(); } catch (err) { console.error('followupTick_ failed: ' + err); }
   var now = new Date(), open = workOpen_(now);
   var unanswered = [], hot = [], due = [];

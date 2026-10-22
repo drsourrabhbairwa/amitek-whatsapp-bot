@@ -199,9 +199,14 @@ function cleanRows_() {
   }).filter(function (x) { return x.lead['Phone']; });
 }
 function validPhone_(p) { return /^91\d{10}$/.test(String(p)); }
+/**
+ * A bulk campaign that is running or waiting: importing now would message the new leads by surprise, so imports wait.
+ * An always-on welcome campaign does not count, because greeting leads added from now on is exactly what it is for.
+ */
 function runningCampaigns_() {
   return rowsAsObjects_(campaignsSheet_(), CAMPAIGN_COLS).some(function (c) {
-    return c['Status'] === 'Running' || c['Status'] === 'Scheduled';
+    if (c['Status'] !== 'Running' && c['Status'] !== 'Scheduled') return false;
+    return !cleanFilter_(JSON.parse(c['Filter'] || '{}')).keepOn;
   });
 }
 
@@ -301,6 +306,7 @@ var APP_ACTIONS = {
                            'City': r.city || '', 'State': r.state || '', 'Campaign': 'Imported' }, 'app');
       known[phone] = true; out.added++;
     });
+    if (out.added && welcomeRunning_()) out.welcome = true;  // the always-on welcome campaign greets them by itself
     return out;
   },
 
