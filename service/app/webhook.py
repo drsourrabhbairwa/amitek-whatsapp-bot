@@ -14,6 +14,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 
 from . import ai, leads, whatsapp
 from .config import get_settings
@@ -45,12 +46,19 @@ def _check_secret(secret: str) -> None:
 
 @router.get("/wh/{secret}")
 async def verify(secret: str, request: Request):
-    """Meta's one-time verification handshake."""
+    """The one-time verification handshake.
+
+    Whoever is verifying sends a challenge and expects it echoed back exactly,
+    as plain text. It is not always a number — Meta sends alphanumeric ones —
+    so it is returned as the string it arrived as, never parsed.
+    """
     _check_secret(secret)
     params = request.query_params
-    if params.get("hub.mode") == "subscribe":
-        return int(params.get("hub.challenge", 0))
-    return {"ok": True}
+    challenge = params.get("hub.challenge") or params.get("challenge")
+    log.info("verification GET: %s", dict(params) or "no parameters")
+    if challenge is not None:
+        return PlainTextResponse(challenge)
+    return PlainTextResponse("ok")
 
 
 @router.post("/wh/{secret}")
