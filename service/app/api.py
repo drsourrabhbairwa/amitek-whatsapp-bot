@@ -6,6 +6,8 @@ this surface cannot be used to blast messages.
 """
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -17,17 +19,52 @@ router = APIRouter(prefix="/api")
 
 @router.get("/status")
 def status():
+    """Deliberately cannot fail. This is the page you open when something is
+    wrong, so it reports the trouble instead of becoming more of it."""
     s = get_settings()
-    counts = leads.counts()
-    return {
-        "database": db.healthy(),
+    out: dict = {
         "send_enabled": s.send_enabled,
-        "sending_hours_open": campaigns.work_open(),
-        "sent_last_24h": leads.sent_last_24h(),
-        "daily_limit": int(settings_store.num("DAILY_LIMIT", 250)),
-        "leads": counts,
         "missing_config": s.missing(),
+        "database": False,
     }
+    try:
+        db.pool()
+        out["database"] = db.healthy()
+    except Exception as err:  # noqa: BLE001
+        out["database_error"] = _explain(err)
+        return out
+
+    for label, work in (
+        ("leads", leads.counts),
+        ("sent_last_24h", leads.sent_last_24h),
+        ("daily_limit", lambda: int(settings_store.num("DAILY_LIMIT", 250))),
+        ("sending_hours_open", campaigns.work_open),
+    ):
+        try:
+            out[label] = work()
+        except Exception as err:  # noqa: BLE001
+            out[label] = None
+            out.setdefault("errors", {})[label] = _explain(err)
+    return out
+
+
+def _explain(err: Exception) -> str:
+    """A database error in plain words, with no password in it."""
+    text = re.sub(r"://([^:]+):[^@]*@", r"://\1:****@", str(err))[:400]
+    low = text.lower()
+    if "password authentication failed" in low:
+        return "Wrong database password in DATABASE_URL. " + text
+    if "could not translate host name" in low or "name or service not known" in low:
+        return "The host in DATABASE_URL is wrong — copy the string from Supabase again. " + text
+    if "timeout" in low or "timed out" in low:
+        return ("Could not reach Supabase. Check the internet, and that you used the "
+                "Transaction pooler string (port 6543). " + text)
+    if "tenant or user not found" in low:
+        return ("Supabase did not recognise the user — the DATABASE_URL is from the wrong "
+                "project, or the username part was edited. " + text)
+    if "is empty" in low:
+        return "DATABASE_URL is still blank in .env. " + text
+    return text
 
 
 @router.get("/leads/{phone}")
