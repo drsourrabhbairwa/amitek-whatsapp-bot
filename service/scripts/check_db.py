@@ -21,7 +21,36 @@ def say(text: str = "") -> None:
 
 
 def hide_password(text: str) -> str:
-    return re.sub(r"://([^:/@]+):[^@]*@", r"://\1:****@", text)
+    # Greedy to the LAST @, because the password may contain an @ itself.
+    return re.sub(r"://([^:/@]+):.*@", r"://\1:****@", text)
+
+
+# Characters that mean something inside a connection URI and so cannot appear
+# raw in a password. Everything here must be written as its %XX code instead.
+MUST_ENCODE = {"@": "%40", ":": "%3A", "/": "%2F", "?": "%3F", "#": "%23",
+               "[": "%5B", "]": "%5D", " ": "%20", "%": "%25"}
+
+
+def password_problems(url: str) -> list[str]:
+    """Find a password that will break the URI, without ever printing it."""
+    body = url.split("://", 1)[-1]
+    host_part = body.rsplit("@", 1)
+    if len(host_part) != 2:
+        return []
+    creds = host_part[0]
+    if ":" not in creds:
+        return []
+    password = creds.split(":", 1)[1]
+    found = sorted({ch for ch in password if ch in MUST_ENCODE})
+    if not found:
+        return []
+    return [
+        "PROBLEM: your password contains " + ", ".join(f"'{c}'" for c in found)
+        + " — these have a special meaning inside a connection string.",
+        "         Replace each one in the DATABASE_URL line with its code:",
+        *[f"           {c}   ->   {MUST_ENCODE[c]}" for c in found],
+        "         Change it ONLY inside the string. Your real password stays as it is.",
+    ]
 
 
 def main() -> int:
@@ -56,6 +85,15 @@ def main() -> int:
         say("      pooler copes better with a laptop that sleeps.")
     if " " in url.strip():
         say("PROBLEM: there is a space inside the string. It should be one unbroken line.")
+
+    problems = password_problems(url)
+    if problems:
+        say()
+        for line in problems:
+            say(line)
+        say()
+        say("Fix that line in .env, save it, and run this check again.")
+        return 1
 
     say()
     say("Connecting ...")

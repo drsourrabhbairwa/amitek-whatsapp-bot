@@ -50,12 +50,15 @@ def status():
 
 def _explain(err: Exception) -> str:
     """A database error in plain words, with no password in it."""
-    text = re.sub(r"://([^:]+):[^@]*@", r"://\1:****@", str(err))[:400]
+    # Greedy up to the LAST @: a password may itself contain an @, and masking
+    # only to the first one would print the rest of it.
+    text = re.sub(r"://([^:/@]+):.*@", r"://\1:****@", str(err))[:400]
     low = text.lower()
     if "password authentication failed" in low:
         return "Wrong database password in DATABASE_URL. " + text
-    if "could not translate host name" in low or "name or service not known" in low:
-        return "The host in DATABASE_URL is wrong — copy the string from Supabase again. " + text
+    if "could not translate host name" in low or "name or service" in low or "getaddrinfo" in low:
+        return ("The host in DATABASE_URL could not be found. The usual cause is an @ or other "
+                "special character inside the password — see check.bat, which names the fix. " + text)
     if "timeout" in low or "timed out" in low:
         return ("Could not reach Supabase. Check the internet, and that you used the "
                 "Transaction pooler string (port 6543). " + text)
