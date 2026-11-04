@@ -1174,6 +1174,26 @@ const tests = {
     assert(/1 number removed/.test(cmd('REMOVE 9811110002')));
     assert(/not in any employee/.test(cmd('WHO 9811110002')));
   },
+  'app screen: employee + pasted list in any format, duplicates shown, remove'() {
+    const env = load(BASE);
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    assert(api('ownersSave', { name: '', numbers: '9811110001' }).error);
+    assert(api('ownersSave', { name: 'Rajat', phone: '12345' }).error);
+    const lines = '+919811110001\n+919811110002\n+919811110003\n+919811110001\n98111 10004, abc';
+    let r = api('ownersSave', { name: 'Rajat', phone: '9800000011', numbers: lines });
+    assert(/4 new numbers added/.test(r.message) && /repeated/.test(r.message), r.message);
+    assert.deepStrictEqual(r.employees, [{ name: 'Rajat', phone: '919800000011', numbers: 4, duplicates: 0 }]);
+    r = api('ownersSave', { name: 'Amit', phone: '9800000012', numbers: '+919811110003\n+919811110005' });
+    assert(/1 new number added/.test(r.message) && /1 duplicate/.test(r.message), r.message);
+    const st = api('ownersStatus').employees;
+    assert.strictEqual(st.find(e => e.name === 'Rajat').duplicates, 1);
+    assert.strictEqual(st.find(e => e.name === 'Amit').numbers, 1);
+    // adding to an existing employee needs no phone
+    r = api('ownersSave', { name: 'Rajat', numbers: '9811110006' });
+    assert.strictEqual(r.employees.find(e => e.name === 'Rajat').numbers, 5);
+    r = api('ownersRemove', { numbers: '9811110006' });
+    assert.strictEqual(r.employees.find(e => e.name === 'Rajat').numbers, 4);
+  },
   'fixed reply (the live bot since 31 Oct): every customer message gets FIXED_REPLY and the team is told'() {
     const env = load(Object.assign({}, BASE, { settings: Object.assign({}, BASE.settings, { FIXED_REPLY_ON: 'true' }) }));
     const fixed = env.ctx.FIXED_REPLY;

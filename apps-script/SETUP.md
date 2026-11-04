@@ -92,7 +92,9 @@ existing numbers are left as they are. Groups are ignored, strangers get no data
 
 ## Whose lead is it (each employee's own list)
 
-Each employee sends bulk WhatsApp from BlueTick to their own numbers. Give the bot each list once, in the app's Chat screen (or on WhatsApp from the main salesperson's number):
+Each employee sends bulk WhatsApp from BlueTick to their own numbers. Give the bot each list once. Easiest: app > **Settings > Employees and their leads**. Type the employee's name and their own WhatsApp number, paste their numbers in any format (one per line, with commas, with or without +91) and tap Save; the screen shows how many numbers each employee has and how many are also in another list.
+
+The same thing by command, in the app's Chat screen (or on WhatsApp from the main salesperson's number):
 
 ```
 EMPLOYEE Rajat 9812345678

@@ -235,6 +235,47 @@ function removeNumbers_(text) {
            : 'None of these numbers is in an employee\'s list.';
 }
 
+// ===================================================================== app screen (Settings > Employees and their leads)
+function ownersOverview_() {
+  ownerMapCache_ = null; employeesCache_ = null;
+  var emps = employees_(), map = ownerMap_(), count = {}, dup = {}, names = {};
+  Object.keys(emps).forEach(function (k) { names[k] = emps[k].name; });
+  Object.keys(map).forEach(function (p) {
+    var k = map[p].employee.toLowerCase();
+    count[k] = (count[k] || 0) + 1;
+    if (map[p].also) dup[k] = (dup[k] || 0) + 1;
+    if (!names[k]) names[k] = map[p].employee;
+  });
+  return Object.keys(names).map(function (k) {
+    return { name: names[k], phone: emps[k] ? emps[k].phone : '', numbers: count[k] || 0, duplicates: dup[k] || 0 };
+  });
+}
+
+var OWNER_ACTIONS = {
+  ownersStatus: function () { return { employees: ownersOverview_() }; },
+  /** Saves an employee (name + their own WhatsApp) and adds the pasted numbers to their list, in any format. */
+  ownersSave: function (a) {
+    ownerMapCache_ = null; employeesCache_ = null;
+    var name = String(a.name || '').replace(/[\s,:]+$/, '').trim(), phone = String(a.phone || '').trim();
+    if (!name || /[\d+]/.test(name)) return { error: 'Type the employee name (letters only)' };
+    var out = [];
+    if (phone) {
+      var p = normPhone_(phone);
+      if (!MOBILE_RE.test(p)) return { error: 'The employee WhatsApp number does not look right' };
+      var say = saveEmployee_(name, p);
+      if (say.charAt(0) !== '✅') return { error: say };
+      out.push(say.split('\n')[0]);
+    }
+    if (String(a.numbers || '').trim()) out.push(assignNumbers_(name, String(a.numbers), 'app'));
+    else if (!phone) return { error: 'Paste the numbers, or add the employee WhatsApp number' };
+    return { message: out.join('\n\n'), employees: ownersOverview_() };
+  },
+  ownersRemove: function (a) {
+    ownerMapCache_ = null; employeesCache_ = null;
+    return { message: removeNumbers_(String(a.numbers || '')), employees: ownersOverview_() };
+  }
+};
+
 // ===================================================================== incoming customer messages
 /** Called by handleInbound_ for every customer message: the lead's "Assigned To" becomes its owner's name. Alerts then
  *  reach the owner through recipientsFor_. Returns the (possibly updated) lead. */

@@ -917,6 +917,7 @@ function renderSettings() {
           '<input type="text" inputmode="tel" class="s_team" data-cat="' + esc(c) + '" value="' + esc((b.team || {})[c] || '') + '" placeholder="98xxxxxxxx, 97xxxxxxxx">';
       }).join('') + '<div class="info" style="margin-top:8px">They can reply DONE / LATER / WON / LOST / LIST too; LIST shows only their leads.</div></details>' +
       '<button class="btn" style="width:100%;margin-top:6px" onclick="saveSettings(this)">Save</button></div>' +
+      '<h2>Employees and their leads</h2><div class="card form" id="ownBox"><div class="info">Loading…</div></div>' +
       '<h2>Pitch by category</h2><div class="card form" id="pbBox"><div class="info">Loading…</div></div>' +
       '<h2>Telegram (team)</h2><div class="card form" id="tgBox"><div class="info">Loading…</div></div>' +
       '<h2>This phone</h2><div class="card">' +
@@ -927,6 +928,7 @@ function renderSettings() {
     S.mode = b.mode === 'sales' ? 'sales' : 'gentle';
     if ($('k_provider')) providerChanged();
     loadPlaybook();
+    loadOwners();
     loadTelegram();
   }).catch(fail);
 }
@@ -974,6 +976,42 @@ function tgUser(id, o) {
   if (o.remove && !confirm('Remove this person from the Telegram bot?')) return;
   o.id = id;
   call('tgUser', o).then(function (r) { toast('Saved'); renderTelegram(r); }).catch(fail);
+}
+// ---- Employees and their leads: each employee's own list of numbers; their replies alert that employee
+function loadOwners() { call('ownersStatus').then(function (r) { renderOwners(r.employees); }).catch(fail); }
+function renderOwners(list) {
+  if (!$('ownBox')) return;
+  S.ownList = list;
+  $('ownBox').innerHTML = '<div class="info">Each employee sends bulk WhatsApp to their own numbers. Add their list here once: when one of their numbers replies, the alert and reminders go to that employee. ' +
+    'A number already in another employee\'s list stays with the first one and is shown as a duplicate.</div>' +
+    (list.length ? list.map(function (e, i) {
+      return '<div class="switch" style="margin-top:8px"><div><b>' + esc(e.name) + '</b><small>' + (e.phone ? '+' + esc(e.phone) : 'no WhatsApp saved: alerts go to the main salesperson') +
+        '</small></div><div style="text-align:right"><b>' + e.numbers + '</b> numbers' + (e.duplicates ? '<small style="color:var(--due)">' + e.duplicates + ' also in another list</small>' : '') +
+        '<div><a href="#" onclick="ownFill(' + i + ');return false">add numbers</a></div></div></div>';
+    }).join('') : '<div class="info" style="margin-top:8px">No employees yet.</div>') +
+    '<label>Employee name</label><input id="o_name" type="text" autocapitalize="words" placeholder="e.g. Rajat">' +
+    '<label>Their own WhatsApp number (alerts go here)</label><input id="o_phone" type="tel" placeholder="98xxxxxxxx">' +
+    '<label>Their numbers: paste in any format (one per line or with commas, +91 is fine)</label>' +
+    '<textarea id="o_numbers" rows="6" placeholder="+919812345678\n+919822222222\n9833333333, 9844444444"></textarea>' +
+    '<button class="btn" style="width:100%;margin-top:12px" onclick="saveOwner(this)">Save employee and numbers</button>' +
+    '<div id="o_out" class="plan info" style="margin-top:10px"></div>' +
+    '<details style="margin-top:10px"><summary class="info" style="cursor:pointer">Take numbers off their employee</summary>' +
+    '<textarea id="o_remove" rows="3" placeholder="Numbers to remove" style="margin-top:8px"></textarea>' +
+    '<button class="btn ghost" style="width:100%;margin-top:8px" onclick="removeOwnerNumbers(this)">Remove these numbers</button></details>';
+}
+function ownFill(i) { var e = S.ownList[i]; $('o_name').value = e.name; $('o_phone').value = e.phone.replace(/^91/, ''); $('o_numbers').focus(); }
+function saveOwner(btn) {
+  btn.disabled = true; $('o_out').textContent = 'Saving…';
+  call('ownersSave', { name: $('o_name').value.trim(), phone: $('o_phone').value.trim(), numbers: $('o_numbers').value })
+    .then(function (r) {
+      var out = r.message; renderOwners(r.employees); $('o_out').textContent = out.replace(/\*/g, ''); toast('Saved');
+    }).catch(function (e) { btn.disabled = false; $('o_out').textContent = ''; fail(e); });
+}
+function removeOwnerNumbers(btn) {
+  var t = $('o_remove').value.trim(); if (!t || !confirm('Take these numbers off their employee?')) return;
+  btn.disabled = true;
+  call('ownersRemove', { numbers: t }).then(function (r) { var out = r.message; renderOwners(r.employees); $('o_out').textContent = out; toast('Done'); })
+    .catch(function (e) { btn.disabled = false; fail(e); });
 }
 function loadPlaybook() {
   call('playbook').then(function (r) {

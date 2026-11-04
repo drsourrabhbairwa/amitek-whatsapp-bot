@@ -37,13 +37,14 @@ function api(pin, action, argsJson) {
   }
   // Slow AI actions only append rows, and the screens below only read, so none of them waits behind (or holds up)
   // an incoming WhatsApp message. Everything else that writes still takes the one script lock.
-  var readOnly = !!{ dashboard: 1, search: 1, lead: 1, settings: 1, status: 1, cleanCheck: 1, tgStatus: 1 }[action];
+  var readOnly = !!{ dashboard: 1, search: 1, lead: 1, settings: 1, status: 1, cleanCheck: 1, tgStatus: 1, ownersStatus: 1 }[action];
   var lock = (readOnly || { sortRun: 1, learnChats: 1, learnText: 1 }[action])
     ? { releaseLock: function () {} } : LockService.getScriptLock();
   if (lock.waitLock) lock.waitLock(25000);
   try {
     var fn = APP_ACTIONS[action] || (typeof GROW_ACTIONS !== 'undefined' && GROW_ACTIONS[action]) ||
-             (typeof TG_ACTIONS !== 'undefined' && TG_ACTIONS[action]);
+             (typeof TG_ACTIONS !== 'undefined' && TG_ACTIONS[action]) ||
+             (typeof OWNER_ACTIONS !== 'undefined' && OWNER_ACTIONS[action]);
     if (!fn) return JSON.stringify({ error: 'Unknown action ' + action });
     return JSON.stringify(fn(args), function (k, v) { return v; });
   } catch (err) {
