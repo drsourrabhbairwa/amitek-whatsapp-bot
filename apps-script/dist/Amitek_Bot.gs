@@ -70,14 +70,24 @@ var DEFAULT_SETTINGS = {
   BUSINESS_NUMBER: '',               // the WhatsApp number leads message (for wa.me links and QR codes), e.g. 919876543210
   SORT_RULES: '',                    // what the owner taught the bot about telling lead types apart (used when it sorts leads)
   TEAM_TEMPLATES_QUIET: 'true',     // a template sent from BlueTick by the team: the bot never answers that lead (team handles it)
+  FIXED_REPLY_ON: 'true',            // true = every customer message gets FIXED_REPLY and the team is alerted (no AI); false = the AI replies
   CATEGORY_PLAYBOOK: ''              // JSON {"Applicator": {template, language, pitch}}: opening template and offer per category (Grow.gs)
 };
 
 var STOP_WORDS = ['stop', 'unsubscribe', 'stop messages', 'not interested', 'abhi nahi', 'band karo', 'मत भेजो', 'अभी नहीं'];
 var START_WORDS = ['start', 'subscribe'];
 var CALL_WORDS = ['call me', 'call karein', 'discuss a project', 'कॉल करें', 'कॉल करे'];
-var GOODBYE = "Theek hai ji, ab aapko hamari taraf se message nahi aayenge. 🙏 Kabhi bhi zarurat ho to yahan 'START' likh dijiye.";
-var CALL_ACK = 'Ji zaroor 🙏 Hamari team ke member aapko jaldi call karenge.';
+var GOODBYE = "Theek hai Sir/Ma'am, ab aapko hamari taraf se message nahi aayenge. 🙏 Kabhi bhi zarurat ho to yahan 'START' likh dijiye.";
+var CALL_ACK = 'Sure 🙏 Hamari team ke member aapko jaldi call karenge.';
+var FIXED_REPLY = [
+  'Hello Sir/Ma\'am, thank you for your reply. I am Amitek\'s AI assistant.',
+  'Your details have been passed to our team, and someone will call you soon.',
+  '',
+  'To speak to a person right now, please call the number in our earlier WhatsApp message.',
+  '',
+  'Regards,',
+  '*Team Amitek*'
+].join('\n');
 
 function secret_(name) {
   return PropertiesService.getScriptProperties().getProperty(name) || '';
@@ -397,7 +407,7 @@ var GENTLE_ROLE = [
   '',
   'How you write:',
   "- Reply in the customer's language: English, Hindi (Devanagari or Roman) or Hinglish, matching how they write.",
-  '- Very short: 1-2 short lines. Simple words. Warm and respectful, use "ji". At most one simple question per message.',
+  '- Very short: 1-2 short lines. Simple words. Warm and respectful: address the customer as "Sir" or "Ma\'am" (or "Sir/Ma\'am" if unsure). Never use the word "ji". At most one simple question per message.',
   '- If you are opening the conversation (no earlier Amitek template already greeted them), start with a short, genuine greeting naming Amitek',
   '  (e.g. "Hello and welcome! I\'m your Amitek AI Assistant. Tell me what you need today, and I will instantly connect you with the dedicated specialist from the right department to help you."),',
   '  only once, never again after that. If the customer writes in Hindi/Hinglish, greet the same way but in their language.',
@@ -433,7 +443,7 @@ var SALES_ROLE = [
   'talking to customers on WhatsApp. You run the sale end to end: Discover -> Diagnose -> Recommend -> Quote -> Close,',
   'and pass the lead to a human salesperson at the right moment.',
   '',
-  "- Reply in the customer's language (English, Hindi or Hinglish). Short messages, one question at a time, use \"ji\".",
+  "- Reply in the customer's language (English, Hindi or Hinglish). Short messages, one question at a time, address the customer as \"Sir\" or \"Ma'am\" (\"Sir/Ma'am\" if unsure), never \"ji\".",
   '- Diagnose softly: let the customer lead. Learn the surface, area, city and whether it leaks from what they say; ask at most one',
   '  of these at a time, and only when you need it to help them. Never run through a checklist. Save it with update_lead.',
   '- If they describe a problem, use the knowledge below to name the likely cause before recommending a product — a real diagnosis,',
@@ -711,9 +721,17 @@ function handleEcho_(e) {
   var lead = getLead_(e.phone);
   // a template sent from BlueTick (an employee's bulk campaign): the team handles the replies, the bot stays out
   var until = e.type === 'template' && setting_('TEAM_TEMPLATES_QUIET') !== 'false' ? teamOnlyUntil_() : humanPause_(lead);
-  upsertLead_(e.phone, { 'Last Human Contact': new Date(), 'Bot Paused Until': until }, 'sales');
+  var fields = { 'Last Human Contact': new Date(), 'Bot Paused Until': until };
+  if (e.type === 'template') fields['Campaign'] = String(e.text).slice(0, 80);   // e.g. "[template amitek_welcome]"
+  upsertLead_(e.phone, fields, 'sales');
 }
-
+/** Tells the team, at once, who replied, what they wrote and which message it answers. */
+function alertReply_(lead, text) {
+  var prev = history_(String(lead['Phone']), 8).filter(function (h) { return h.direction === 'out'; }).pop();
+  var inReplyTo = prev ? String(prev.body).slice(0, 160) : (lead['Campaign'] ? String(lead['Campaign']) : 'not recorded');
+  alertLead_(lead, '💬 *Reply* from ' + label_(lead) + ':\n"' + String(text).slice(0, 500) + '"\n\n' +
+             '_Answering:_ ' + inReplyTo + '\n_Reply DONE ' + String(lead['Phone']).slice(-10) + ' after you call._');
+}
 function handleInbound_(m) {
   if (!m.phone) return;
   if (isTeam_(m.phone)) {
@@ -735,13 +753,13 @@ function handleInbound_(m) {
   if (lead && lead['Opt-in'] === 'Opted out') { delete changes['Status']; delete changes['Opt-in']; }
   lead = upsertLead_(m.phone, changes, 'bot');
   waMarkRead_(m.id);
-  if (typeof ownerInbound_ === 'function' && ownerInbound_(m, lead)) return;  // Owners.gs: owner alert + fixed reply
+  if (typeof ownerAssign_ === 'function') lead = ownerAssign_(lead);  // Owners.gs: the employee whose list has this number
 
   var word = String(m.text).trim().toLowerCase().replace(/[.!]+$/, '');
   if (lead['Opt-in'] === 'Opted out') {
     if (START_WORDS.indexOf(word) >= 0) {
       upsertLead_(m.phone, { 'Opt-in': 'Opted in', 'Status': 'Replied' }, 'bot');
-      send_(m.phone, 'Welcome back ji 🙏 Bataiye, hum aapki kya madad kar sakte hain?');
+      send_(m.phone, 'Welcome back Sir/Ma\'am 🙏 Bataiye, hum aapki kya madad kar sakte hain?');
     }
     return;
   }
@@ -762,6 +780,18 @@ function handleInbound_(m) {
   }
   if (paused && paused > new Date()) return;  // a human from the team is handling this chat
   if (!botEnabled_()) return;                  // bot switched off: the team replies, hourly check alerts them
+
+  if (isOn_(setting_('FIXED_REPLY_ON'))) {  // fixed-reply mode: no AI, no self-made answers
+    var fixed = { reply: FIXED_REPLY, updates: {}, optedOut: false, handoff: null };
+    if (!lead['Handoff At']) {
+      fixed.handoff = { reason: 'Customer replied to Amitek', priority: 'hot',
+                        summary: 'Customer wrote: ' + String(m.text).slice(0, 300) };
+    } else {
+      alertReply_(lead, m.text);   // already handed over: just tell the team about this new message
+    }
+    apply_(m.phone, lead, fixed);
+    return;
+  }
 
   var result;
   try {
@@ -803,7 +833,8 @@ function label_(lead) {
   var bits = [];
   if (lead['Category'] && lead['Category'] !== 'Other') bits.push(lead['Category']);
   if (lead['City']) bits.push(lead['City']);
-  return name + ' (+' + lead['Phone'] + (bits.length ? ', ' + bits.join(', ') : '') + ')';
+  var own = typeof ownerOf_ === 'function' ? ownerOf_(String(lead['Phone'] || '')) : null;  // Owners.gs
+  return name + ' (+' + lead['Phone'] + (bits.length ? ', ' + bits.join(', ') : '') + ')' + (own ? ' · ' + own.name + '\'s lead' : '');
 }
 
 function alertSales_(text, noTelegram) {
@@ -1181,7 +1212,7 @@ function setup() {
   ScriptApp.newTrigger('reminderTick').timeBased().everyMinutes(10).create();
   ScriptApp.newTrigger('dailySummary').timeBased().atHour(settingNum_('DAILY_SUMMARY_HOUR')).everyDays(1)
       .inTimezone('Asia/Kolkata').create();
-  if (typeof ownersSetup === 'function') ownersSetup();  // Owners.gs: Employees + Lead Owners tabs, fixed-reply settings
+  if (typeof ownersSetup === 'function') ownersSetup();  // Owners.gs: Employees + Lead Owners tabs
   refreshBoard_();
   console.log('Setup done. Open the Amitek app, paste the web app link and choose a PIN.');
 }
@@ -1918,10 +1949,8 @@ function sentLast24h_() {
 }
 
 // ===================================================================== sending
-function firstName_(l) {
-  var n = String(l['Name'] || l['Business'] || '').trim();
-  return n ? n.split(/\s+/)[0].slice(0, 30) : 'ji';
-}
+var GREETING = "Sir/Ma'am";  // everyone is addressed the same way: no first names, no "ji"
+function firstName_(l) { return GREETING; }
 
 // A "Template Vars" value fills a template's body variables in order, e.g. "{Name}, Waterproofing, {City}".
 // {Field} pulls that column from the lead (Name, City, Category, Business, ...); anything else is sent as literal text.
@@ -2404,7 +2433,7 @@ function applySort_(row, category) {
 // ===================================================================== pitch by category
 /** What each type of lead is offered: the opening template and what the bot steers the chat towards. Editable in Settings. */
 var COMMON_TEMPLATE = 'amitek_intro';  // one approved opener for everyone; the bot tailors the pitch to the category once they reply
-var COMMON_TEXT = 'Namaste {{1}} ji. This is Amitek (APP Paints Chemicals Pvt. Ltd.). We make waterproofing, coatings and construction chemicals, and for builders and architects we also offer seamless flooring, home automation and CCTV solutions. 25+ years of manufacturing and field expertise, 1000+ contractors and dealers across India and overseas, Govt. Approved Star Export House. Tell us in one line what work you do and how we can help you.';
+var COMMON_TEXT = 'Hello {{1}}, this is Amitek (APP Paints Chemicals Pvt. Ltd.). We make waterproofing, coatings and construction chemicals, and for builders and architects we also offer seamless flooring, home automation and CCTV solutions. 25+ years of manufacturing and field expertise, 1000+ contractors and dealers across India and overseas, Govt. Approved Star Export House. Tell us in one line what work you do and how we can help you.';
 var PLAYBOOK_DEFAULTS = {
   'Applicator': { template: COMMON_TEMPLATE, text: COMMON_TEXT, pitch:
     'Main offer: third-party manufacturing (private label). Amitek manufactures waterproofing and coating products under the ' +
@@ -3299,44 +3328,22 @@ var TG_ACTIONS = {
 
 
 /**
- * Lead owners - which employee a lead number belongs to - and the fixed reply to customers.
+ * Lead owners: which employee a lead number belongs to.
  *
  * Each employee sends bulk WhatsApp from BlueTick to their own list of numbers. Give the bot each list once:
  *   EMPLOYEE Rajat 98xxxxxxxx          (Rajat's own WhatsApp: where his alerts go)
  *   ASSIGN Rajat 98xxxxxxxx, 97xxxxxxxx, ...   (the numbers Rajat messages)
  * Type these in the app's Chat screen, or send them on WhatsApp from the main salesperson's number.
- * When one of Rajat's numbers writes in, Rajat gets "your lead replied" on WhatsApp. A number that is already in
- * another employee's list stays with the first employee and is reported as a duplicate (DUPLICATES lists them).
+ * When one of Rajat's numbers writes in, the alerts and reminders for that lead go to Rajat (marked "Rajat's lead").
+ * A number that is already in another employee's list stays with the first employee and is reported as a
+ * duplicate (DUPLICATES lists them).
  *
- * FIXED_REPLY_ON (Settings tab, default true): every customer message gets FIXED_REPLY_TEXT and nothing else;
- * the AI does not answer customers. Set it to false to go back to the AI replies.
- *
- * Code.gs calls into this file from handleInbound_, salesCommand_, teamPhones_, recipientsFor_ and setup().
+ * Code.gs calls into this file from handleInbound_, salesCommand_, teamPhones_, recipientsFor_, label_ and setup().
  */
 
 var OWNER_SHEETS = { employees: 'Employees', owners: 'Lead Owners' };
 var EMPLOYEE_COLS = ['Name', 'WhatsApp', 'Added'];
 var OWNER_COLS = ['Phone', 'Employee', 'Also In', 'Added', 'Added By'];
-
-var OWNER_DEFAULTS = {
-  FIXED_REPLY_ON: 'true',
-  FIXED_REPLY_GAP_HOURS: '0',
-  FIXED_REPLY_TEXT: [
-    'Hello Sir/Ma\'am, thank you for your reply. I am Amitek\'s AI assistant.',
-    'Your details have been passed to our team, and someone will call you soon.',
-    '',
-    'To speak to a person right now, please call the number in our earlier WhatsApp message.',
-    '',
-    'Regards,',
-    '*Team Amitek*'
-  ].join('\n')
-};
-var OWNER_NOTES = {
-  FIXED_REPLY_ON: 'true = every customer message gets FIXED_REPLY_TEXT only (no AI). false = the AI replies as before',
-  FIXED_REPLY_GAP_HOURS: '0 = send the fixed reply after every message. 24 = at most once a day per customer',
-  FIXED_REPLY_TEXT: 'The only message customers get. *bold* works like WhatsApp'
-};
-function ownerSetting_(k) { var v = setting_(k); return v === '' ? OWNER_DEFAULTS[k] : v; }
 
 var OWNER_HELP = [
   '*Who handles which lead*',
@@ -3348,15 +3355,10 @@ var OWNER_HELP = [
   'REMOVE 98xxxxxxxx, ... - take numbers off their employee (to move one: REMOVE it, then ASSIGN it again)'
 ].join('\n');
 
-/** Run once from the editor: makes the two tabs and adds the fixed-reply rows to the Settings tab. */
+/** Called by setup(): makes the Employees and Lead Owners tabs. */
 function ownersSetup() {
   growSheet_(OWNER_SHEETS.employees, EMPLOYEE_COLS);
   growSheet_(OWNER_SHEETS.owners, OWNER_COLS);
-  var st = sheet_(SHEETS.settings);
-  var have = st.getLastRow() > 1 ? st.getRange(2, 1, st.getLastRow() - 1, 1).getValues().map(function (r) { return String(r[0]); }) : [];
-  Object.keys(OWNER_DEFAULTS).forEach(function (k) { if (have.indexOf(k) < 0) st.appendRow([k, OWNER_DEFAULTS[k], OWNER_NOTES[k]]); });
-  settingsCache_ = null;
-  console.log('Lead owners ready. In the app Chat type: EMPLOYEE Rajat 98xxxxxxxx');
 }
 
 // ===================================================================== data
@@ -3563,65 +3565,12 @@ function removeNumbers_(text) {
 }
 
 // ===================================================================== incoming customer messages
-/** "Your lead replied" to the employee who owns the number; the main salesperson if they have no WhatsApp saved. */
-function ownerAlert_(owner, lead, text) {
-  var msg = '📩 *' + owner.name + ', your lead replied*\n' + label_(lead) +
-            (owner.also ? '\n(also in ' + owner.also + '\'s list)' : '') +
-            '\n\n"' + String(text).slice(0, 500) + '"\n\nReply DONE ' + String(lead['Phone']).slice(-10) + ' after you call.';
-  if (owner.phone && teamPing_(owner.phone, msg, lead, true)) return;
-  alertSales_(msg + (owner.phone ? '' : '\n\n(' + owner.name + '\'s WhatsApp is not saved: EMPLOYEE ' + owner.name + ' 98xxxxxxxx)'));
-}
-
-function fixedSentRecently_(phone, text) {
-  var h = Number(ownerSetting_('FIXED_REPLY_GAP_HOURS')) || 0;
-  if (h <= 0) return false;
-  var since = Date.now() - h * 3600000;
-  return history_(phone, 30).some(function (x) { return x.sender === 'bot' && x.body === text && new Date(x.time).getTime() >= since; });
-}
-
-/**
- * Called by handleInbound_ for every customer message (already saved and marked read). Tells the owner, and with
- * FIXED_REPLY_ON sends the fixed reply and nothing else. Returns true when the message is fully handled here.
- */
-function ownerInbound_(m, lead) {
-  var phone = m.phone, owner = ownerOf_(phone), now = new Date();
-  if (!isOn_(ownerSetting_('FIXED_REPLY_ON'))) {  // AI replies as before; the owner still hears about it
-    if (owner) {
-      if (lead['Assigned To'] !== owner.name) lead = upsertLead_(phone, { 'Assigned To': owner.name }, 'owners');
-      ownerAlert_(owner, lead, m.text);
-    }
-    return false;
-  }
-  var word = String(m.text).trim().toLowerCase().replace(/[.!]+$/, '');
-  if (lead['Opt-in'] === 'Opted out') {
-    if (START_WORDS.indexOf(word) < 0) return true;  // said STOP earlier: no message at all
-    lead = upsertLead_(phone, { 'Opt-in': 'Opted in', 'Status': 'Replied' }, 'bot');
-  } else if (STOP_WORDS.indexOf(word) >= 0) {  // no goodbye message: they asked for no messages
-    lead = upsertLead_(phone, { 'Opt-in': 'Opted out', 'Status': 'Opted out', 'Next Follow-up': '' }, 'bot');
-    var stopText = '🚫 ' + label_(lead) + ' said STOP. No more messages will go to them.';
-    if (owner && owner.phone) teamPing_(owner.phone, stopText, lead, false); else alertLead_(lead, stopText);
-    return true;
-  }
-
-  var u = {}, open = ['Hot', 'Qualified'].indexOf(String(lead['Status'])) >= 0 && asDate_(lead['Handoff At']);
-  if (owner) u['Assigned To'] = owner.name;
-  if (!open) {  // a fresh hand-over: reminders run until someone replies DONE
-    u['Status'] = 'Hot'; u['Handoff At'] = now; u['SLA Alerts'] = 0;
-    u['Follow-up Note'] = 'Wrote: ' + String(m.text).slice(0, 200);
-    u['Next Follow-up'] = addHours_(settingNum_('HOT_LEAD_SLA_HOURS'));
-    if (!owner && !lead['Assigned To']) u['Assigned To'] = 'Sales team';
-  }
-  lead = upsertLead_(phone, u, 'bot');
-  if (owner) ownerAlert_(owner, lead, m.text);
-  else alertLead_(lead, '💬 *' + (open ? 'Reply' : 'Lead wrote in') + '* from ' + label_(lead) + ':\n' + String(m.text).slice(0, 500) +
-                        '\n\nReply DONE ' + String(lead['Phone']).slice(-10) + ' after you call.', true);
-
-  var paused = asDate_(lead['Bot Paused Until']);
-  if (paused && paused > now && !isTeamOnly_(lead)) return true;  // a team member is chatting with them right now
-  if (!botEnabled_()) return true;
-  var text = ownerSetting_('FIXED_REPLY_TEXT');
-  if (!fixedSentRecently_(phone, text)) send_(phone, text);
-  return true;
+/** Called by handleInbound_ for every customer message: the lead's "Assigned To" becomes its owner's name. Alerts then
+ *  reach the owner through recipientsFor_. Returns the (possibly updated) lead. */
+function ownerAssign_(lead) {
+  var owner = ownerOf_(String(lead['Phone'] || ''));
+  if (!owner || lead['Assigned To'] === owner.name) return lead;
+  return upsertLead_(String(lead['Phone']), { 'Assigned To': owner.name }, 'owners');
 }
 
 

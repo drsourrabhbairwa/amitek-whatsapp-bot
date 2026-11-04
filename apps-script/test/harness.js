@@ -99,7 +99,7 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
   ctx.setup();
   // apply test settings to the Settings tab
   const st = sheets['Settings'];
-  // tests run at any hour; the AI-reply tests run with the fixed reply off (Owners.gs tests switch it on)
+  // tests run at any hour; the AI-reply tests run with the fixed reply off (its own test switches it on)
   settings = Object.assign({ CAMPAIGN_HOURS: '0-24', WORK_HOURS: '0-24', ALERT_TEMPLATE: 'none', FIXED_REPLY_ON: 'false' }, settings);
   Object.keys(settings).forEach(k => {
     const row = st.rows.find(r => r[0] === k);

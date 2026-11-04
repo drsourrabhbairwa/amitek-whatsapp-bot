@@ -100,12 +100,12 @@ ASSIGN Rajat 9811111111, 9822222222, 9833333333
 ```
 
 - `EMPLOYEE` saves the employee's own WhatsApp (where their alerts go). `ASSIGN` saves the numbers they message; paste as many as you like, separated by commas, new lines or spaces.
-- When one of Rajat's numbers writes in, Rajat gets "your lead replied" on WhatsApp with the message, and the hourly reminders for that lead go to Rajat.
+- When one of Rajat's numbers writes in, the lead alert, every later reply and the reminders for that lead go to Rajat (marked "Rajat's lead") instead of the main salesperson. If nobody acts after the last reminder, the main salesperson is still told.
 - A number already in another employee's list stays with the first employee and is reported as a duplicate. `DUPLICATES` lists them, `WHO 98xxxxxxxx` says whose a number is, `EMPLOYEES` shows everyone, `REMOVE 98xxxxxxxx` takes a number off (then `ASSIGN` it again to move it).
 - The lists live in the **Employees** and **Lead Owners** tabs; you can also paste into them directly (Lead Owners: Phone, Employee).
 - Ask each employee to send "hi" once to the business number, so the bot can message them freely.
 
-**Fixed reply.** With `FIXED_REPLY_ON` = true (Settings tab, the default) every customer message gets `FIXED_REPLY_TEXT` and nothing else: the AI does not answer customers, STOP opts them out without a goodbye, and the team is alerted. `FIXED_REPLY_GAP_HOURS` = 24 sends it at most once a day per customer (0 = after every message). Set `FIXED_REPLY_ON` to false to go back to the AI replies.
+**Fixed reply.** With `FIXED_REPLY_ON` = true (Settings tab, the default) every customer message gets the fixed message (`FIXED_REPLY` in Code.gs) and the team is alerted; the AI does not answer customers. Set it to false to go back to the AI replies.
 
 ## Teaching the bot (Learn tab)
 - **Teach the bot**: paste (or pick a text/CSV file) your company profile, product list, price list or an old campaign export.

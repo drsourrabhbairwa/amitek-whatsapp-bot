@@ -1,42 +1,20 @@
 /**
- * Lead owners - which employee a lead number belongs to - and the fixed reply to customers.
+ * Lead owners: which employee a lead number belongs to.
  *
  * Each employee sends bulk WhatsApp from BlueTick to their own list of numbers. Give the bot each list once:
  *   EMPLOYEE Rajat 98xxxxxxxx          (Rajat's own WhatsApp: where his alerts go)
  *   ASSIGN Rajat 98xxxxxxxx, 97xxxxxxxx, ...   (the numbers Rajat messages)
  * Type these in the app's Chat screen, or send them on WhatsApp from the main salesperson's number.
- * When one of Rajat's numbers writes in, Rajat gets "your lead replied" on WhatsApp. A number that is already in
- * another employee's list stays with the first employee and is reported as a duplicate (DUPLICATES lists them).
+ * When one of Rajat's numbers writes in, the alerts and reminders for that lead go to Rajat (marked "Rajat's lead").
+ * A number that is already in another employee's list stays with the first employee and is reported as a
+ * duplicate (DUPLICATES lists them).
  *
- * FIXED_REPLY_ON (Settings tab, default true): every customer message gets FIXED_REPLY_TEXT and nothing else;
- * the AI does not answer customers. Set it to false to go back to the AI replies.
- *
- * Code.gs calls into this file from handleInbound_, salesCommand_, teamPhones_, recipientsFor_ and setup().
+ * Code.gs calls into this file from handleInbound_, salesCommand_, teamPhones_, recipientsFor_, label_ and setup().
  */
 
 var OWNER_SHEETS = { employees: 'Employees', owners: 'Lead Owners' };
 var EMPLOYEE_COLS = ['Name', 'WhatsApp', 'Added'];
 var OWNER_COLS = ['Phone', 'Employee', 'Also In', 'Added', 'Added By'];
-
-var OWNER_DEFAULTS = {
-  FIXED_REPLY_ON: 'true',
-  FIXED_REPLY_GAP_HOURS: '0',
-  FIXED_REPLY_TEXT: [
-    'Hello Sir/Ma\'am, thank you for your reply. I am Amitek\'s AI assistant.',
-    'Your details have been passed to our team, and someone will call you soon.',
-    '',
-    'To speak to a person right now, please call the number in our earlier WhatsApp message.',
-    '',
-    'Regards,',
-    '*Team Amitek*'
-  ].join('\n')
-};
-var OWNER_NOTES = {
-  FIXED_REPLY_ON: 'true = every customer message gets FIXED_REPLY_TEXT only (no AI). false = the AI replies as before',
-  FIXED_REPLY_GAP_HOURS: '0 = send the fixed reply after every message. 24 = at most once a day per customer',
-  FIXED_REPLY_TEXT: 'The only message customers get. *bold* works like WhatsApp'
-};
-function ownerSetting_(k) { var v = setting_(k); return v === '' ? OWNER_DEFAULTS[k] : v; }
 
 var OWNER_HELP = [
   '*Who handles which lead*',
@@ -48,15 +26,10 @@ var OWNER_HELP = [
   'REMOVE 98xxxxxxxx, ... - take numbers off their employee (to move one: REMOVE it, then ASSIGN it again)'
 ].join('\n');
 
-/** Run once from the editor: makes the two tabs and adds the fixed-reply rows to the Settings tab. */
+/** Called by setup(): makes the Employees and Lead Owners tabs. */
 function ownersSetup() {
   growSheet_(OWNER_SHEETS.employees, EMPLOYEE_COLS);
   growSheet_(OWNER_SHEETS.owners, OWNER_COLS);
-  var st = sheet_(SHEETS.settings);
-  var have = st.getLastRow() > 1 ? st.getRange(2, 1, st.getLastRow() - 1, 1).getValues().map(function (r) { return String(r[0]); }) : [];
-  Object.keys(OWNER_DEFAULTS).forEach(function (k) { if (have.indexOf(k) < 0) st.appendRow([k, OWNER_DEFAULTS[k], OWNER_NOTES[k]]); });
-  settingsCache_ = null;
-  console.log('Lead owners ready. In the app Chat type: EMPLOYEE Rajat 98xxxxxxxx');
 }
 
 // ===================================================================== data
@@ -263,63 +236,10 @@ function removeNumbers_(text) {
 }
 
 // ===================================================================== incoming customer messages
-/** "Your lead replied" to the employee who owns the number; the main salesperson if they have no WhatsApp saved. */
-function ownerAlert_(owner, lead, text) {
-  var msg = '📩 *' + owner.name + ', your lead replied*\n' + label_(lead) +
-            (owner.also ? '\n(also in ' + owner.also + '\'s list)' : '') +
-            '\n\n"' + String(text).slice(0, 500) + '"\n\nReply DONE ' + String(lead['Phone']).slice(-10) + ' after you call.';
-  if (owner.phone && teamPing_(owner.phone, msg, lead, true)) return;
-  alertSales_(msg + (owner.phone ? '' : '\n\n(' + owner.name + '\'s WhatsApp is not saved: EMPLOYEE ' + owner.name + ' 98xxxxxxxx)'));
-}
-
-function fixedSentRecently_(phone, text) {
-  var h = Number(ownerSetting_('FIXED_REPLY_GAP_HOURS')) || 0;
-  if (h <= 0) return false;
-  var since = Date.now() - h * 3600000;
-  return history_(phone, 30).some(function (x) { return x.sender === 'bot' && x.body === text && new Date(x.time).getTime() >= since; });
-}
-
-/**
- * Called by handleInbound_ for every customer message (already saved and marked read). Tells the owner, and with
- * FIXED_REPLY_ON sends the fixed reply and nothing else. Returns true when the message is fully handled here.
- */
-function ownerInbound_(m, lead) {
-  var phone = m.phone, owner = ownerOf_(phone), now = new Date();
-  if (!isOn_(ownerSetting_('FIXED_REPLY_ON'))) {  // AI replies as before; the owner still hears about it
-    if (owner) {
-      if (lead['Assigned To'] !== owner.name) lead = upsertLead_(phone, { 'Assigned To': owner.name }, 'owners');
-      ownerAlert_(owner, lead, m.text);
-    }
-    return false;
-  }
-  var word = String(m.text).trim().toLowerCase().replace(/[.!]+$/, '');
-  if (lead['Opt-in'] === 'Opted out') {
-    if (START_WORDS.indexOf(word) < 0) return true;  // said STOP earlier: no message at all
-    lead = upsertLead_(phone, { 'Opt-in': 'Opted in', 'Status': 'Replied' }, 'bot');
-  } else if (STOP_WORDS.indexOf(word) >= 0) {  // no goodbye message: they asked for no messages
-    lead = upsertLead_(phone, { 'Opt-in': 'Opted out', 'Status': 'Opted out', 'Next Follow-up': '' }, 'bot');
-    var stopText = '🚫 ' + label_(lead) + ' said STOP. No more messages will go to them.';
-    if (owner && owner.phone) teamPing_(owner.phone, stopText, lead, false); else alertLead_(lead, stopText);
-    return true;
-  }
-
-  var u = {}, open = ['Hot', 'Qualified'].indexOf(String(lead['Status'])) >= 0 && asDate_(lead['Handoff At']);
-  if (owner) u['Assigned To'] = owner.name;
-  if (!open) {  // a fresh hand-over: reminders run until someone replies DONE
-    u['Status'] = 'Hot'; u['Handoff At'] = now; u['SLA Alerts'] = 0;
-    u['Follow-up Note'] = 'Wrote: ' + String(m.text).slice(0, 200);
-    u['Next Follow-up'] = addHours_(settingNum_('HOT_LEAD_SLA_HOURS'));
-    if (!owner && !lead['Assigned To']) u['Assigned To'] = 'Sales team';
-  }
-  lead = upsertLead_(phone, u, 'bot');
-  if (owner) ownerAlert_(owner, lead, m.text);
-  else alertLead_(lead, '💬 *' + (open ? 'Reply' : 'Lead wrote in') + '* from ' + label_(lead) + ':\n' + String(m.text).slice(0, 500) +
-                        '\n\nReply DONE ' + String(lead['Phone']).slice(-10) + ' after you call.', true);
-
-  var paused = asDate_(lead['Bot Paused Until']);
-  if (paused && paused > now && !isTeamOnly_(lead)) return true;  // a team member is chatting with them right now
-  if (!botEnabled_()) return true;
-  var text = ownerSetting_('FIXED_REPLY_TEXT');
-  if (!fixedSentRecently_(phone, text)) send_(phone, text);
-  return true;
+/** Called by handleInbound_ for every customer message: the lead's "Assigned To" becomes its owner's name. Alerts then
+ *  reach the owner through recipientsFor_. Returns the (possibly updated) lead. */
+function ownerAssign_(lead) {
+  var owner = ownerOf_(String(lead['Phone'] || ''));
+  if (!owner || lead['Assigned To'] === owner.name) return lead;
+  return upsertLead_(String(lead['Phone']), { 'Assigned To': owner.name }, 'owners');
 }
