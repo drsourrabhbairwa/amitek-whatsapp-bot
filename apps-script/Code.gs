@@ -728,6 +728,7 @@ function handleInbound_(m) {
   if (lead && lead['Opt-in'] === 'Opted out') { delete changes['Status']; delete changes['Opt-in']; }
   lead = upsertLead_(m.phone, changes, 'bot');
   waMarkRead_(m.id);
+  if (typeof ownerInbound_ === 'function' && ownerInbound_(m, lead)) return;  // Owners.gs: owner alert + fixed reply
 
   var word = String(m.text).trim().toLowerCase().replace(/[.!]+$/, '');
   if (lead['Opt-in'] === 'Opted out') {
@@ -821,13 +822,16 @@ function teamPhones_() {
   if (main) all[main] = true;
   var r = teamRouting_();
   Object.keys(r).forEach(function (c) { r[c].forEach(function (p) { all[p] = true; }); });
+  if (typeof ownerPhones_ === 'function') ownerPhones_().forEach(function (p) { all[p] = true; });  // Owners.gs employees
   return Object.keys(all);
 }
 function isTeam_(phone) { return !!phone && teamPhones_().indexOf(String(phone)) >= 0; }
 /** Who hears about this lead: the main salesperson plus everyone set for its category (and for "All"). */
 function recipientsFor_(lead) {
   var r = teamRouting_(), main = normPhone_(setting_('SALES_WHATSAPP'));
-  var list = (main ? [main] : []).concat(r[String(lead['Category'] || 'Other')] || [], r['All'] || []);
+  var own = typeof ownerOf_ === 'function' ? ownerOf_(String(lead['Phone'] || '')) : null;  // Owners.gs: whose list has it
+  var list = own && own.phone ? [own.phone].concat(r['All'] || []) :
+      (main ? [main] : []).concat(r[String(lead['Category'] || 'Other')] || [], r['All'] || []);
   return list.filter(function (p, i) { return list.indexOf(p) === i; });
 }
 /** The categories a team member looks after ([] = the main salesperson, who sees everything). */
@@ -1073,6 +1077,8 @@ var HELP = '*Lead commands* (send to this number):\n' +
     'CAMPAIGNS - what is running or scheduled';
 
 function salesCommand_(text, from, allowAIChat) {
+  var own = typeof ownerCommand_ === 'function' ? ownerCommand_(text, from) : '';  // Owners.gs: EMPLOYEE, ASSIGN, ...
+  if (own) return own;
   var parts = String(text).trim().split(/\s+/);
   var cmd = (parts[0] || '').toUpperCase();
   if (cmd === 'HELP' || cmd === '?') return HELP;
@@ -1168,6 +1174,7 @@ function setup() {
   ScriptApp.newTrigger('reminderTick').timeBased().everyMinutes(10).create();
   ScriptApp.newTrigger('dailySummary').timeBased().atHour(settingNum_('DAILY_SUMMARY_HOUR')).everyDays(1)
       .inTimezone('Asia/Kolkata').create();
+  if (typeof ownersSetup === 'function') ownersSetup();  // Owners.gs: Employees + Lead Owners tabs, fixed-reply settings
   refreshBoard_();
   console.log('Setup done. Open the Amitek app, paste the web app link and choose a PIN.');
 }

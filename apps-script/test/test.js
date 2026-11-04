@@ -1142,6 +1142,69 @@ const tests = {
     assert(p.quiet && p.items[0].filter.quiet);
     assert(/Bot stays quiet/.test(env.ctx.planText_(p)));
     assert(!env.ctx.makePlan_('applicators ko message bhejo').quiet);
+  },
+  'lead owners: employees, their lists, duplicates, "your lead replied" alerts'() {
+    const env = load(BASE);
+    const RAJAT = '919800000011', AMIT = '919800000012';
+    const cmd = t => env.ctx.salesCommand_(t, SALES);
+    assert(/Rajat saved/.test(cmd('EMPLOYEE Rajat ' + RAJAT.slice(2))));
+    assert(/Amit saved/.test(cmd('EMPLOYEE Amit +91 ' + AMIT.slice(2))));
+    assert(/already saved for Rajat/.test(cmd('EMPLOYEE Someone ' + RAJAT.slice(2))));
+    let r = cmd('ASSIGN Rajat: 9811110001, 98111 10002\n09811110003 9811110001 12345');
+    assert(/3 new numbers added/.test(r) && /repeated in your list/.test(r) && /12345/.test(r), r);
+    r = cmd('ASSIGN Amit 9811110002, 9811110004');
+    assert(/1 new number added/.test(r) && /1 duplicate/.test(r) && /Rajat: 9811110002/.test(r), r);
+    assert(/Rajat's lead \(also in Amit's list\)/.test(cmd('WHO 9811110002')));
+    assert(/9811110002 - Rajat \(also Amit\)/.test(cmd('DUPLICATES')));
+    assert(/Rajat \(\+919800000011\): 3 numbers/.test(cmd('EMPLOYEES')));
+    // only the main salesperson may change the lists
+    assert(/Only the main salesperson/.test(env.ctx.salesCommand_('ASSIGN Rajat 9811110009', '919899999999')));
+    // employees count as team, so their own messages are commands and never leads
+    assert(env.ctx.isTeam_(RAJAT));
+    // Rajat's number writes in: Rajat gets the alert, the AI still answers while the fixed reply is off
+    env.claude.push(say('Ji, bataiye'));
+    post(env, payload([text('919811110001', 'price kya hai?')]));
+    const alert = texts(env).find(s => s.to === RAJAT);
+    assert(alert && /Rajat, your lead replied/.test(alert.text) && /price kya hai/.test(alert.text), JSON.stringify(texts(env)));
+    assert.strictEqual(lead(env, '919811110001')['Assigned To'], 'Rajat');
+    assert.strictEqual(JSON.stringify(env.ctx.recipientsFor_(lead(env, '919811110001'))), JSON.stringify([RAJAT]));
+    // REMOVE takes the number off; then it can be assigned again
+    assert(/1 number removed/.test(cmd('REMOVE 9811110002')));
+    assert(/not in any employee/.test(cmd('WHO 9811110002')));
+  },
+  'fixed reply: every customer message gets only the fixed message, STOP is silent'() {
+    const env = load(Object.assign({}, BASE, { settings: Object.assign({}, BASE.settings, { FIXED_REPLY_ON: 'true' }) }));
+    const fixed = env.ctx.ownerSetting_('FIXED_REPLY_TEXT');
+    assert(/Team Amitek/.test(fixed));
+    post(env, payload([text(CUST, 'hello')]));
+    post(env, payload([text(CUST, 'mujhe waterproofing chahiye')]));
+    assert.strictEqual(env.claudeCalls.length, 0);  // the AI is never asked
+    assert.deepStrictEqual(texts(env).filter(s => s.to === CUST).map(s => s.text), [fixed, fixed]);
+    const l = lead(env, CUST);
+    assert.strictEqual(l.Status, 'Hot'); assert(l['Handoff At']);
+    assert(texts(env).some(s => s.to === SALES && /Lead wrote in/.test(s.text)));
+    assert(texts(env).some(s => s.to === SALES && /\bReply\b/.test(s.text)));
+    // STOP: opted out, no goodbye; later messages get nothing
+    const before = texts(env).filter(s => s.to === CUST).length;
+    post(env, payload([text(CUST, 'STOP')]));
+    post(env, payload([text(CUST, 'hi again')]));
+    assert.strictEqual(lead(env, CUST)['Opt-in'], 'Opted out');
+    assert.strictEqual(texts(env).filter(s => s.to === CUST).length, before);
+    // a team member chatting (human pause) keeps the fixed reply out of the way
+    const C2 = '919811113333';
+    upsert(env, C2, { 'Bot Paused Until': env.ctx.addHours_(5) });
+    post(env, payload([text(C2, 'ok sir')]));
+    assert.strictEqual(texts(env).filter(s => s.to === C2).length, 0);
+    // a quiet (team-only) campaign lead still gets the fixed reply
+    const C3 = '919811114444';
+    upsert(env, C3, { 'Bot Paused Until': env.ctx.teamOnlyUntil_() });
+    post(env, payload([text(C3, 'interested')]));
+    assert.deepStrictEqual(texts(env).filter(s => s.to === C3).map(s => s.text), [fixed]);
+    // with a gap set, it is sent at most once in that time
+    env.sheets['Settings'].rows.find(x => x[0] === 'FIXED_REPLY_GAP_HOURS')[1] = '24';
+    env.ctx.settingsCache_ = null;
+    post(env, payload([text(C3, 'kab call karoge')]));
+    assert.strictEqual(texts(env).filter(s => s.to === C3).length, 1);
   }
 };
 

@@ -11,6 +11,7 @@ function makeSheet(name) {
     getLastColumn: () => rows.reduce((m, r) => Math.max(m, r.length), 0),
     appendRow: r => { rows.push(r.slice()); },
     getRange: (r, c, nr = 1, nc = 1) => ({
+      setNumberFormat() { return this; },
       getValues: () => Array.from({ length: nr }, (_, i) =>
         Array.from({ length: nc }, (_, j) => { const v = (rows[r - 1 + i] || [])[c - 1 + j]; return v === undefined ? '' : v; })),
       setValues: vals => vals.forEach((vr, i) => {
@@ -93,12 +94,13 @@ function load({ claude = [], props = {}, settings = {} } = {}) {
     }
   };
   vm.createContext(ctx);
-  (process.env.DIST ? ['dist/Amitek_Bot.gs'] : ['Code.gs', 'App.gs', 'Grow.gs', 'Telegram.gs']).forEach(f =>
+  (process.env.DIST ? ['dist/Amitek_Bot.gs'] : ['Code.gs', 'App.gs', 'Grow.gs', 'Telegram.gs', 'Owners.gs']).forEach(f =>
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), ctx, { filename: f }));
   ctx.setup();
   // apply test settings to the Settings tab
   const st = sheets['Settings'];
-  settings = Object.assign({ CAMPAIGN_HOURS: '0-24', WORK_HOURS: '0-24', ALERT_TEMPLATE: 'none' }, settings);  // tests run at any hour
+  // tests run at any hour; the AI-reply tests run with the fixed reply off (Owners.gs tests switch it on)
+  settings = Object.assign({ CAMPAIGN_HOURS: '0-24', WORK_HOURS: '0-24', ALERT_TEMPLATE: 'none', FIXED_REPLY_ON: 'false' }, settings);
   Object.keys(settings).forEach(k => {
     const row = st.rows.find(r => r[0] === k);
     row[1] = settings[k];
