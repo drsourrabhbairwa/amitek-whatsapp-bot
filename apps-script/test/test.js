@@ -364,6 +364,15 @@ const tests = {
     assert.strictEqual(r.total, 2);
     assert.deepStrictEqual(r.employees, [{ name: 'Rajat', count: 1 }, { name: 'Unassigned', count: 1 }]);
   },
+  'owner lists: numbers with another country code (Africa etc.) are saved, Indian ones still work'() {
+    const env = load(BASE);
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    const r = api('ownersSave', { name: 'Nivi', phone: '9352254006', numbers: '+234 801 234 5678\n00254712345678\n+27821234567\n9811110001\n12345' });
+    assert(/4 new numbers added/.test(r.message), r.message);
+    assert.strictEqual(r.employees.find(e => e.name === 'Nivi').numbers, 4);
+    assert.strictEqual(JSON.stringify(env.ctx.phonesIn_('+91 1234567890').phones), '[]');
+    assert.strictEqual(JSON.stringify(env.ctx.phonesIn_('+2348012345678').phones), '["2348012345678"]');
+  },
   'app: dashboard, search, lead detail, actions, reply, settings'() {
     const env = load(Object.assign({}, BASE, { claude: [
       tool('handoff_to_sales', { reason: 'price', summary: 'Applicator Jaipur 2000 sqft', priority: 'hot' }), say('Ji 🙏 team call karegi')] }));

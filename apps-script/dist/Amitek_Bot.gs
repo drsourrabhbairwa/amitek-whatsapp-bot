@@ -3425,7 +3425,18 @@ function ownerPhones_() {
   return Object.keys(e).map(function (k) { return e[k].phone; }).filter(function (p) { return MOBILE_RE.test(p); });
 }
 
-/** Mobile numbers in pasted text: commas, new lines or spaces between them; "+91 98123 45678" is one number. */
+/** A number written with its own country code from outside India ("+234 801 234 5678", "00254..."): digits, or '' if not one. */
+function intlPhone_(s) {
+  var t = String(s || '').trim();
+  if (!/^(\+|00)/.test(t)) return '';
+  var d = t.replace(/\D/g, '');
+  if (t.charAt(0) !== '+') d = d.slice(2);
+  if (d.indexOf('91') === 0) return '';  // India is handled by MOBILE_RE, so a bad +91 number stays rejected
+  return d.length >= 9 && d.length <= 15 ? d : '';
+}
+
+/** Mobile numbers in pasted text: commas, new lines or spaces between them; "+91 98123 45678" is one number.
+ *  Indian mobiles (91 + 10 digits) and numbers with another country code (Africa, etc.) are accepted. */
 function phonesIn_(text) {
   var phones = [], bad = [];
   String(text || '').split(/[,;\n|\/]+/).forEach(function (piece) {
@@ -3433,10 +3444,14 @@ function phonesIn_(text) {
     if (!piece) return;
     var whole = normPhone_(piece);
     if (MOBILE_RE.test(whole)) { phones.push(whole); return; }
+    var intl = intlPhone_(piece);
+    if (intl) { phones.push(intl); return; }
     piece.split(/\s+/).forEach(function (w) {
       if (!/\d/.test(w)) return;
       var p = normPhone_(w);
-      if (MOBILE_RE.test(p)) phones.push(p); else bad.push(w);
+      if (MOBILE_RE.test(p)) phones.push(p);
+      else if (intlPhone_(w)) phones.push(intlPhone_(w));
+      else bad.push(w);
     });
   });
   return { phones: phones, bad: bad };
