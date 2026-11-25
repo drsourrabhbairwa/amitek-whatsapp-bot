@@ -335,7 +335,24 @@ var APP_ACTIONS = {
     var digits = q.replace(/\D/g, '');
     var now = new Date();
     var status = a.status || '';
-    var out = allLeadsCached_().filter(function (l) {
+    var employee = String(a.employee || '').toLowerCase().trim();
+    var all = allLeadsCached_();
+    // Who owns a lead: the employee whose own list has its number (Lead Owners tab, same as the Employees section).
+    // Counts cover every lead, so the staff chips show totals before any search.
+    var owners = ownerMap_();
+    var ownerOfLead = function (l) { var o = owners[normPhone_(l['Phone'])]; return o ? o.employee : ''; };
+    var perStaff = {};
+    all.forEach(function (l) {
+      var who = ownerOfLead(l) || 'Unassigned';
+      perStaff[who] = (perStaff[who] || 0) + 1;
+    });
+    var employees = Object.keys(perStaff).map(function (k) { return { name: k, count: perStaff[k] }; })
+      .sort(function (x, y) { return y.count - x.count || x.name.localeCompare(y.name); });
+    var out = all.filter(function (l) {
+      if (employee) {
+        var owner = ownerOfLead(l).toLowerCase();
+        if (employee === 'unassigned' ? owner !== '' : owner !== employee) return false;
+      }
       if (status && l['Status'] !== status) return false;
       if (!q) return true;
       if (digits.length >= 4 && String(l['Phone']).indexOf(digits) >= 0) return true;
@@ -344,7 +361,7 @@ var APP_ACTIONS = {
       });
     });
     out.sort(function (a, b) { return (asDate_(b['Updated']) || 0) - (asDate_(a['Updated']) || 0); });
-    return { total: out.length, leads: out.slice(0, 60).map(function (l) { return card_(l, now); }) };
+    return { total: out.length, leads: out.slice(0, 60).map(function (l) { return card_(l, now); }), employees: employees };
   },
 
   lead: function (a) {

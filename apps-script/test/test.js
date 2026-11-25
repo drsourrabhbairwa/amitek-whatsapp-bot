@@ -349,6 +349,21 @@ const tests = {
     assert.strictEqual(String(sh.rows[3][col('Phone')]), '919811122223');
     assert.strictEqual(api('cleanCheck').fixableCount, 0);
   },
+  'app: search by employee (their own number list) with a lead count per employee'() {
+    const env = load(BASE);
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    post(env, payload([text(CUST, 'hi')]));
+    post(env, payload([text('919811113333', 'hi')]));
+    // Rajat's list holds CUST's number; the other lead is in nobody's list
+    api('ownersSave', { name: 'Rajat', phone: '9800000011', numbers: '9811112222' });
+    let r = api('search', { employee: 'rajat' });
+    assert.strictEqual(r.total, 1, JSON.stringify(r));
+    assert.strictEqual(r.leads[0].phone, CUST);
+    assert.strictEqual(api('search', { employee: 'unassigned' }).total, 1);
+    r = api('search');
+    assert.strictEqual(r.total, 2);
+    assert.deepStrictEqual(r.employees, [{ name: 'Rajat', count: 1 }, { name: 'Unassigned', count: 1 }]);
+  },
   'app: dashboard, search, lead detail, actions, reply, settings'() {
     const env = load(Object.assign({}, BASE, { claude: [
       tool('handoff_to_sales', { reason: 'price', summary: 'Applicator Jaipur 2000 sqft', priority: 'hot' }), say('Ji 🙏 team call karegi')] }));

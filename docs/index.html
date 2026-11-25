@@ -216,7 +216,7 @@
 <div id="sheetBg" class="sheet-bg hidden" onclick="if(event.target===this)closeSheet()"><div class="sheet" id="sheet"></div></div>
 
 <script>
-var S = { pin: '', tab: 'today', lead: null, leadTab: 'chat', q: '', status: '', stack: [], assistantLog: [] };
+var S = { pin: '', tab: 'today', lead: null, leadTab: 'chat', q: '', status: '', employee: '', stack: [], assistantLog: [] };
 var NEED_ORDER = { Hot: 'Hot', Overdue: 'Overdue', 'Waiting reply': 'Waiting' };
 
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
@@ -447,7 +447,7 @@ function renderLeads() {
   $('main').innerHTML = '<div class="search"><input id="q" type="text" placeholder="Search name, number, city…" value="' + esc(S.q) + '"></div>' +
     '<div class="chips">' + STATUSES.map(function (s) {
       return '<button class="chip' + (S.status === s ? ' on' : '') + '" onclick="setStatus(\'' + s + '\')">' + (s || 'All') + '</button>';
-    }).join('') + '</div><div class="row" style="margin:0 2px 8px">' +
+    }).join('') + '</div><div class="chips" id="empChips"></div><div class="row" style="margin:0 2px 8px">' +
     '<div><button class="btn soft" style="width:100%" onclick="openClean()">🧹 Check data</button></div>' +
     '<div><button class="btn soft" style="width:100%" onclick="openManage(\'bulk\')">✏️ Bulk edit</button></div>' +
     '<div><button class="btn soft" style="width:100%" onclick="openManage(\'import\')">⬆️ Import</button></div></div>' +
@@ -457,6 +457,19 @@ function renderLeads() {
   search();
 }
 function setStatus(s) { S.status = s; renderLeads(); }
+function setEmployee(e) { S.employee = e; renderLeads(); }
+// Staff chips: "All staff" plus one chip per employee ('Assigned To') with their lead count.
+function renderStaffChips(list) {
+  var el = $('empChips'); if (!el) return;
+  var total = list.reduce(function (sum, x) { return sum + x.count; }, 0);
+  var chip = function (key, label, count) {
+    return '<button class="chip' + (S.employee === key ? ' on' : '') + '" data-e="' + esc(key) + '" onclick="setEmployee(this.dataset.e)">' +
+      esc(label) + ' · ' + count + '</button>';
+  };
+  el.innerHTML = chip('', 'All staff', total) + list.map(function (x) {
+    return x.name === 'Unassigned' ? chip('unassigned', 'Unassigned', x.count) : chip(x.name, x.name, x.count);
+  }).join('');
+}
 
 // ---------------------------------------------------------------- Check lead data
 function openClean() { S.clean = true; render(); window.scrollTo(0, 0); }
@@ -623,10 +636,13 @@ function deleteLeadNow() {
   }).catch(fail);
 }
 function search() {
-  var q = S.q, st = S.status;
-  call('search', { q: q, status: st }).then(function (r) {
-    if (S.tab !== 'leads' || S.lead || q !== S.q || st !== S.status) return;
-    $('results').innerHTML = '<div class="info" style="margin:0 2px 8px">' + r.total + ' leads' + (r.total > r.leads.length ? ', showing ' + r.leads.length : '') + '</div>' +
+  var q = S.q, st = S.status, emp = S.employee;
+  call('search', { q: q, status: st, employee: emp }).then(function (r) {
+    if (S.tab !== 'leads' || S.lead || q !== S.q || st !== S.status || emp !== S.employee) return;
+    renderStaffChips(r.employees || []);
+    $('results').innerHTML = '<div class="info" style="margin:0 2px 8px">' + r.total + ' leads' +
+      (emp ? ' for ' + esc(emp === 'unassigned' ? 'no one' : emp) : '') +
+      (r.total > r.leads.length ? ', showing ' + r.leads.length : '') + '</div>' +
       listOf(r.leads, 'No leads found');
   }).catch(fail);
 }
