@@ -373,6 +373,25 @@ const tests = {
     assert.strictEqual(JSON.stringify(env.ctx.phonesIn_('+91 1234567890').phones), '[]');
     assert.strictEqual(JSON.stringify(env.ctx.phonesIn_('+2348012345678').phones), '["2348012345678"]');
   },
+  'replies report: per employee, real customer replies vs likely auto-replies, filter by employee'() {
+    const env = load(Object.assign({}, BASE, { settings: Object.assign({}, BASE.settings, { FIXED_REPLY_ON: 'true' }) }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    api('ownersSave', { name: 'Rajat', phone: '9800000011', numbers: '9811112222' });
+    post(env, payload([text(CUST, 'rate batao')]));                                               // Rajat's lead, a real reply
+    post(env, payload([text('919811113333', 'Thank you for contacting us. We will get back to you shortly.')]));   // nobody's lead, auto-reply
+    const greet = 'Hello! This is our standard welcome note for everyone';                      // same text from 3 numbers = auto
+    ['919811114441', '919811114442', '919811114443'].forEach(p => post(env, payload([text(p, greet)])));
+    const r = api('repliesReport', { days: 0 });
+    const rajat = r.employees.find(e => e.name === 'Rajat'), none = r.employees.find(e => e.name === 'Unassigned');
+    assert.strictEqual(rajat.real, 1); assert.strictEqual(rajat.auto, 0); assert.strictEqual(rajat.bot, 1); assert.strictEqual(rajat.repliedLeads, 1);
+    assert.strictEqual(none.real, 0); assert.strictEqual(none.auto, 4);
+    assert.strictEqual(r.total.real, 1); assert.strictEqual(r.total.auto, 4);
+    assert.strictEqual(r.messages.length, 1); assert.strictEqual(r.messages[0].employee, 'Rajat'); assert.strictEqual(r.messages[0].phone, CUST);
+    assert.strictEqual(api('repliesReport', { kind: 'auto' }).messages.length, 4);
+    assert.strictEqual(api('repliesReport', { kind: 'auto', employee: 'rajat' }).messages.length, 0);
+    assert.strictEqual(api('repliesReport', { kind: 'real', employee: 'unassigned' }).messages.length, 0);
+    assert.strictEqual(api('repliesReport', { days: 1 }).total.real, 1);
+  },
   'app: dashboard, search, lead detail, actions, reply, settings'() {
     const env = load(Object.assign({}, BASE, { claude: [
       tool('handoff_to_sales', { reason: 'price', summary: 'Applicator Jaipur 2000 sqft', priority: 'hot' }), say('Ji 🙏 team call karegi')] }));

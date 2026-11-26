@@ -266,7 +266,89 @@ function ownersOverview_() {
   });
 }
 
+// ===================================================================== replies by employee (report)
+/** Wording of a business auto-responder or away message (the customer's WhatsApp Business app writing, not a person). */
+var AUTO_REPLY_RE = new RegExp([
+  'thank(s| you) for (contacting|reaching|messaging|your message|writing|getting in touch)',
+  'we(\'ll| will) (get back|respond|reply|revert)', 'get back to you (shortly|soon|as soon)', 'will (respond|reply|revert) (shortly|soon)',
+  'auto[- ]?(reply|response|responder)', 'automated (message|reply|response)', 'this is an automat',
+  '(working|business|office) hours', 'currently (unavailable|away|closed|not available)', 'we are (currently )?(away|closed|unavailable)',
+  'out of (the )?office', 'संपर्क करने के लिए धन्यवाद'
+].join('|'), 'i');
+
+function replyKey_(text) { return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 160); }
+
+/** What the customer wrote is "auto" (a likely auto-reply) or "real". Same long text from 3+ different numbers counts as auto too. */
+function replyKind_(text, sameFrom) {
+  if (AUTO_REPLY_RE.test(String(text || ''))) return 'auto';
+  return sameFrom >= 3 ? 'auto' : 'real';
+}
+
+/** Per employee: leads, messages sent, real customer replies, likely auto-replies, our bot's replies; plus the messages of one kind. */
+function repliesReport_(a) {
+  var days = Number(a.days) || 0, wantEmp = String(a.employee || '').toLowerCase().trim(), kind = a.kind === 'auto' ? 'auto' : 'real';
+  var since = days ? new Date(Date.now() - days * 86400000) : null;
+  var owners = ownerMap_(), leads = allLeadsCached_(), byPhone = {};
+  var ownerName = function (phone) { var o = owners[normPhone_(phone)]; return o ? o.employee : 'Unassigned'; };
+  var stats = {};
+  var stat = function (name) {
+    return stats[name] || (stats[name] = { name: name, leads: 0, hot: 0, optedOut: 0, sent: 0, real: 0, auto: 0, bot: 0, repliedLeads: {} });
+  };
+  Object.keys(employees_()).forEach(function (k) { stat(employees_()[k].name); });
+  leads.forEach(function (l) {
+    byPhone[String(l['Phone'])] = l;
+    var s = stat(ownerName(l['Phone']));
+    s.leads++;
+    if (l['Status'] === 'Hot') s.hot++;
+    if (l['Status'] === 'Opted out') s.optedOut++;
+  });
+
+  var sh = sheet_(SHEETS.messages), last = sh.getLastRow();
+  var rows = last < 2 ? [] : sh.getRange(2, 1, last - 1, 5).getValues();   // Time, Phone, Direction, Sender, Body
+  var sameFrom = {};   // text -> how many different numbers sent it
+  rows.forEach(function (r) {
+    if (r[2] !== 'in' || r[3] !== 'lead') return;
+    var k = replyKey_(r[4]);
+    if (k.length < 20) return;
+    var seen = sameFrom[k] || (sameFrom[k] = { n: 0, by: {} });
+    if (!seen.by[r[1]]) { seen.by[r[1]] = 1; seen.n++; }
+  });
+
+  var listed = [];
+  rows.forEach(function (r) {
+    var when = asDate_(r[0]);
+    if (since && (!when || when < since)) return;
+    var phone = String(r[1]), s = stat(ownerName(phone));
+    if (r[2] === 'out') {
+      if (r[3] === 'campaign') s.sent++;
+      else if (r[3] === 'bot') s.bot++;
+      return;
+    }
+    if (r[2] !== 'in' || r[3] !== 'lead') return;
+    var k = replyKey_(r[4]), what = replyKind_(r[4], k.length >= 20 && sameFrom[k] ? sameFrom[k].n : 0);
+    if (what === 'auto') s.auto++; else { s.real++; s.repliedLeads[phone] = 1; }
+    if (what === kind && (!wantEmp || s.name.toLowerCase() === wantEmp)) listed.push({ r: r, when: when, name: s.name });
+  });
+
+  var employees = Object.keys(stats).map(function (k) {
+    var s = stats[k];
+    return { name: s.name, leads: s.leads, hot: s.hot, optedOut: s.optedOut, sent: s.sent, real: s.real, auto: s.auto, bot: s.bot,
+             repliedLeads: Object.keys(s.repliedLeads).length };
+  }).filter(function (s) { return s.name !== 'Unassigned' || s.leads || s.real || s.auto || s.sent || s.bot; })
+    .sort(function (x, y) { return y.real - x.real || y.leads - x.leads || x.name.localeCompare(y.name); });
+  var total = { name: 'All', leads: 0, hot: 0, optedOut: 0, sent: 0, real: 0, auto: 0, bot: 0, repliedLeads: 0 };
+  employees.forEach(function (e) { Object.keys(total).forEach(function (k) { if (k !== 'name') total[k] += e[k]; }); });
+
+  listed.sort(function (x, y) { return (y.when || 0) - (x.when || 0); });
+  var messages = listed.slice(0, 60).map(function (x) {
+    var l = byPhone[String(x.r[1])] || {};
+    return { phone: String(x.r[1]), name: l['Name'] || l['Business'] || 'Lead', employee: x.name, time: iso_(x.when), text: String(x.r[4]).slice(0, 300) };
+  });
+  return { days: days, kind: kind, employees: employees, total: total, count: listed.length, messages: messages };
+}
+
 var OWNER_ACTIONS = {
+  repliesReport: function (a) { return repliesReport_(a || {}); },
   ownersStatus: function () { return { employees: ownersOverview_() }; },
   /** Saves an employee (name + their own WhatsApp) and adds the pasted numbers to their list, in any format. */
   ownersSave: function (a) {

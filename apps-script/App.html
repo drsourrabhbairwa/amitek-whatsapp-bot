@@ -79,6 +79,12 @@
   .chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; scrollbar-width: none; }
   .chip { border: 1px solid var(--line); background: var(--card); border-radius: 20px; padding: 6px 12px; white-space: nowrap; cursor: pointer; font-size: 13px; }
   .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .rep-row { display: grid; grid-template-columns: 1.5fr .7fr .7fr 1fr .6fr .8fr; gap: 4px; align-items: center; padding: 9px 4px; border-bottom: 1px solid var(--line); font-size: 13px; cursor: pointer; }
+  .rep-row:last-child { border-bottom: 0; }
+  .rep-row span { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .rep-row span.ok { color: var(--brand2); font-weight: 700; }
+  .rep-row.on { background: var(--brand-soft); border-radius: 8px; }
+  .rep-row.head { cursor: default; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
   .btn { border: 0; border-radius: 12px; padding: 11px 14px; background: var(--brand); color: #fff; font-weight: 700; cursor: pointer;
     box-shadow: 0 2px 8px rgba(10,108,184,.25); transition: transform .08s; }
   .btn:active { transform: scale(.97); }
@@ -216,7 +222,7 @@
 <div id="sheetBg" class="sheet-bg hidden" onclick="if(event.target===this)closeSheet()"><div class="sheet" id="sheet"></div></div>
 
 <script>
-var S = { pin: '', tab: 'today', lead: null, leadTab: 'chat', q: '', status: '', employee: '', stack: [], assistantLog: [] };
+var S = { pin: '', tab: 'today', lead: null, leadTab: 'chat', q: '', status: '', employee: '', report: null, stack: [], assistantLog: [] };
 var NEED_ORDER = { Hot: 'Hot', Overdue: 'Overdue', 'Waiting reply': 'Waiting' };
 
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
@@ -339,15 +345,18 @@ function setHeader(title, back) {
   $('title').textContent = title; $('backBtn').classList.toggle('hidden', !back);
   document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === S.tab); });
 }
-function showTab(tab) { S.tab = tab; S.lead = null; S.camp = null; S.clean = false; S.manage = ''; S.stack = []; render(); window.scrollTo(0, 0); }
-function goBack() { S.lead = null; S.camp = null; S.clean = false; S.manage = ''; render(); }
+function showTab(tab) { S.tab = tab; S.lead = null; S.camp = null; S.clean = false; S.report = null; S.manage = ''; S.stack = []; render(); window.scrollTo(0, 0); }
+function goBack() {
+  if (S.lead && S.report) { S.lead = null; render(); return; }   // from a lead back to the replies report
+  S.lead = null; S.camp = null; S.clean = false; S.report = null; S.manage = ''; render();
+}
 function refresh() { if (S.lead) openLead(S.lead.card.phone, true); else render(); }
 function loading() { $('main').innerHTML = '<div class="loading">Loading…</div>'; }
 
 function render() {
   if (S.tab === 'assistant') return renderAssistant();
   if (S.tab === 'today') return renderToday();
-  if (S.tab === 'leads') return S.clean ? renderClean() : S.manage === 'bulk' ? renderBulk() : S.manage === 'import' ? renderImport() : renderLeads();
+  if (S.tab === 'leads') return S.report ? renderReport() : S.clean ? renderClean() : S.manage === 'bulk' ? renderBulk() : S.manage === 'import' ? renderImport() : renderLeads();
   if (S.tab === 'add') return renderAdd();
   if (S.tab === 'settings') return renderSettings();
   if (S.tab === 'send') return S.camp ? renderCampForm() : renderCampaigns();
@@ -451,6 +460,7 @@ function renderLeads() {
     '<div><button class="btn soft" style="width:100%" onclick="openClean()">🧹 Check data</button></div>' +
     '<div><button class="btn soft" style="width:100%" onclick="openManage(\'bulk\')">✏️ Bulk edit</button></div>' +
     '<div><button class="btn soft" style="width:100%" onclick="openManage(\'import\')">⬆️ Import</button></div></div>' +
+    '<button class="btn soft" style="width:100%;margin:0 0 10px" onclick="openReport()">📊 Replies by employee</button>' +
     '<div id="results"><div class="loading">Loading…</div></div>';
   var q = $('q');
   q.addEventListener('input', function () { clearTimeout(renderLeads.h); renderLeads.h = setTimeout(function () { S.q = q.value; search(); }, 350); });
@@ -469,6 +479,45 @@ function renderStaffChips(list) {
   el.innerHTML = chip('', 'All staff', total) + list.map(function (x) {
     return x.name === 'Unassigned' ? chip('unassigned', 'Unassigned', x.count) : chip(x.name, x.name, x.count);
   }).join('');
+}
+
+// ---------------------------------------------------------------- Replies by employee
+// Real customer replies vs likely auto-replies (the customer's own auto-responder), per employee's number list.
+var REPORT_DAYS = [[1, 'Today'], [7, '7 days'], [30, '30 days'], [0, 'All time']];
+function openReport() { S.report = S.report || { days: 30, employee: '', kind: 'real' }; render(); window.scrollTo(0, 0); }
+function reportSet(k, v) { S.report[k] = v; renderReport(); }
+function renderReport() {
+  var R = S.report;
+  setHeader('Replies by employee', true); loading();
+  call('repliesReport', { days: R.days, employee: R.employee, kind: R.kind }).then(function (r) {
+    if (!S.report || S.lead) return;
+    var chip = function (on, label, js) { return '<button class="chip' + (on ? ' on' : '') + '" onclick="' + js + '">' + label + '</button>'; };
+    var row = function (e, key) {
+      return '<div class="rep-row' + (R.employee === key ? ' on' : '') + '" data-e="' + esc(key) + '" onclick="reportSet(\'employee\',this.dataset.e)">' +
+        '<b>' + esc(e.name) + '</b><span>' + e.leads + '</span><span>' + e.sent + '</span><span class="ok">' + e.real + '</span>' +
+        '<span>' + e.auto + '</span><span>' + e.bot + '</span></div>';
+    };
+    var tot = r.total;
+    var html = '<div class="chips">' + REPORT_DAYS.map(function (d) {
+      return chip(R.days === d[0], d[1], 'reportSet(\'days\',' + d[0] + ')');
+    }).join('') + '</div>' +
+      '<div class="card" style="padding:6px 10px"><div class="rep-row head"><b>Employee</b><span>Leads</span><span>Sent</span><span>Real replies</span><span>Auto</span><span>Our bot</span></div>' +
+      row(tot, '') + r.employees.map(function (e) { return row(e, e.name === 'Unassigned' ? 'unassigned' : e.name); }).join('') + '</div>' +
+      '<div class="info" style="margin:6px 2px 10px">Tap a name to see only that employee. <b>Real replies</b> = customers who wrote themselves; ' +
+      '<b>Auto</b> = likely auto-replies (away or thank-you messages, or the same text from many numbers); <b>Our bot</b> = automatic replies this bot sent.</div>' +
+      '<div class="chips">' +
+      chip(R.kind === 'real', 'Real customer replies · ' + tot.real, 'reportSet(\'kind\',\'real\')') +
+      chip(R.kind === 'auto', 'Auto-replies · ' + tot.auto, 'reportSet(\'kind\',\'auto\')') + '</div>' +
+      '<div class="info" style="margin:0 2px 8px">' + r.count + (R.kind === 'auto' ? ' likely auto-replies' : ' real replies') +
+      (R.employee ? ' for ' + esc(R.employee === 'unassigned' ? 'no employee' : R.employee) : '') +
+      (r.count > r.messages.length ? ', showing latest ' + r.messages.length : '') + '</div>' +
+      (r.messages.length ? '<div class="list">' + r.messages.map(function (m) {
+        return '<div class="lead" onclick="openLead(\'' + esc(m.phone) + '\')"><div class="avatar">' + esc(initials(m.name)) + '</div><div class="main">' +
+          '<div class="name">' + esc(m.name) + ' <span class="info">· ' + esc(m.employee) + '</span></div>' +
+          '<div class="note">' + esc(m.text) + '</div></div><div class="when">' + esc(when(m.time)) + '</div></div>';
+      }).join('') + '</div>' : '<div class="empty">No messages here yet</div>');
+    $('main').innerHTML = html;
+  }).catch(fail);
 }
 
 // ---------------------------------------------------------------- Check lead data
