@@ -1218,14 +1218,14 @@ const tests = {
     r = api('ownersRemove', { numbers: '9811110006' });
     assert.strictEqual(r.employees.find(e => e.name === 'Rajat').numbers, 4);
   },
-  'fixed reply (the live bot since 31 Oct): every customer message gets FIXED_REPLY and the team is told'() {
+  'fixed reply (the live bot since 31 Oct): each customer gets FIXED_REPLY once, every message still alerts the team'() {
     const env = load(Object.assign({}, BASE, { settings: Object.assign({}, BASE.settings, { FIXED_REPLY_ON: 'true' }) }));
     const fixed = env.ctx.FIXED_REPLY;
     assert(/Team Amitek/.test(fixed));
     post(env, payload([text(CUST, 'hello')]));
     post(env, payload([text(CUST, 'mujhe waterproofing chahiye')]));
     assert.strictEqual(env.claudeCalls.length, 0);  // the AI is never asked
-    assert.deepStrictEqual(texts(env).filter(s => s.to === CUST).map(s => s.text), [fixed, fixed]);
+    assert.deepStrictEqual(texts(env).filter(s => s.to === CUST).map(s => s.text), [fixed]);  // second message: no reply
     const l = lead(env, CUST);
     assert.strictEqual(l.Status, 'Hot'); assert(l['Handoff At']);
     assert(texts(env).some(s => s.to === SALES && /HOT LEAD/.test(s.text) && /hello/.test(s.text)));
@@ -1247,6 +1247,18 @@ const tests = {
     post(env, payload([text(C3, 'interested')]));
     assert.strictEqual(texts(env).filter(s => s.to === C3).length, 0);
     assert(texts(env).some(s => s.to === SALES && /interested/.test(s.text)));
+    // a "Call me" tap after the bot already replied: no second message, but the team is told
+    const C5 = '919811117777';
+    post(env, payload([text(C5, 'hello')]));
+    post(env, payload([text(C5, 'call me')]));
+    assert.deepStrictEqual(texts(env).filter(s => s.to === C5).map(s => s.text), [fixed]);
+    // REPLY_ONCE off: every message gets the fixed reply again
+    env.sheets['Settings'].rows.find(x => x[0] === 'REPLY_ONCE')[1] = 'false';
+    env.ctx.settingsCache_ = null;
+    const C4 = '919811116666';
+    post(env, payload([text(C4, 'hello')]));
+    post(env, payload([text(C4, 'price?')]));
+    assert.deepStrictEqual(texts(env).filter(s => s.to === C4).map(s => s.text), [fixed, fixed]);
     // the AI comes back when FIXED_REPLY_ON is false
     env.sheets['Settings'].rows.find(x => x[0] === 'FIXED_REPLY_ON')[1] = 'false';
     env.ctx.settingsCache_ = null;

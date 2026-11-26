@@ -63,7 +63,8 @@ var DEFAULT_SETTINGS = {
   BUSINESS_NUMBER: '',               // the WhatsApp number leads message (for wa.me links and QR codes), e.g. 919876543210
   SORT_RULES: '',                    // what the owner taught the bot about telling lead types apart (used when it sorts leads)
   TEAM_TEMPLATES_QUIET: 'true',     // a template sent from BlueTick by the team: the bot never answers that lead (team handles it)
-  FIXED_REPLY_ON: 'true',            // true = every customer message gets FIXED_REPLY and the team is alerted (no AI); false = the AI replies
+  FIXED_REPLY_ON: 'true',            // true = customers get FIXED_REPLY and the team is alerted (no AI); false = the AI replies
+  REPLY_ONCE: 'true',                // true (with FIXED_REPLY_ON) = each customer gets the bot's reply only once; later messages only alert the team
   CATEGORY_PLAYBOOK: ''              // JSON {"Applicator": {template, language, pitch}}: opening template and offer per category (Grow.gs)
 };
 
@@ -725,6 +726,16 @@ function alertReply_(lead, text) {
   alertLead_(lead, '💬 *Reply* from ' + label_(lead) + ':\n"' + String(text).slice(0, 500) + '"\n\n' +
              '_Answering:_ ' + inReplyTo + '\n_Reply DONE ' + String(lead['Phone']).slice(-10) + ' after you call._');
 }
+/** True when the bot has already sent this customer an automatic reply (REPLY_ONCE keeps it to one). */
+function botRepliedBefore_(phone) {
+  var sh = sheet_(SHEETS.messages), last = sh.getLastRow();
+  if (last < 2) return false;
+  var rows = sh.getRange(2, 2, last - 1, 3).getValues();   // Phone, Direction, Sender
+  for (var i = rows.length - 1; i >= 0; i--) {
+    if (String(rows[i][0]) === String(phone) && rows[i][1] === 'out' && rows[i][2] === 'bot') return true;
+  }
+  return false;
+}
 function handleInbound_(m) {
   if (!m.phone) return;
   if (isTeam_(m.phone)) {
@@ -760,8 +771,10 @@ function handleInbound_(m) {
     apply_(m.phone, lead, { reply: GOODBYE, updates: {}, handoff: null, optedOut: true });
     return;
   }
+  // REPLY_ONCE (fixed-reply mode): the customer already got the bot's one reply, so nothing more is sent; the team is still told
+  var already = isOn_(setting_('FIXED_REPLY_ON')) && isOn_(setting_('REPLY_ONCE')) && botRepliedBefore_(m.phone);
   if (CALL_WORDS.indexOf(word) >= 0) {
-    apply_(m.phone, lead, { reply: CALL_ACK, updates: {}, optedOut: false,
+    apply_(m.phone, lead, { reply: already ? '' : CALL_ACK, updates: {}, optedOut: false,
                             handoff: { reason: "Customer tapped 'Call me'", summary: 'Asked for a call.', priority: 'hot' } });
     return;
   }
@@ -775,7 +788,7 @@ function handleInbound_(m) {
   if (!botEnabled_()) return;                  // bot switched off: the team replies, hourly check alerts them
 
   if (isOn_(setting_('FIXED_REPLY_ON'))) {  // fixed-reply mode: no AI, no self-made answers
-    var fixed = { reply: FIXED_REPLY, updates: {}, optedOut: false, handoff: null };
+    var fixed = { reply: already ? '' : FIXED_REPLY, updates: {}, optedOut: false, handoff: null };
     if (!lead['Handoff At']) {
       fixed.handoff = { reason: 'Customer replied to Amitek', priority: 'hot',
                         summary: 'Customer wrote: ' + String(m.text).slice(0, 300) };
