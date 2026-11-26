@@ -412,7 +412,7 @@ const tests = {
     assert.strictEqual(api('repliesReport', {}).common, 2);
     const x = api('commonExport', {}), lines = x.csv.split('\r\n');
     assert.strictEqual(lines.length, 3); assert(/^Phone,Name,Status/.test(lines[0]));
-    assert(lines.some(l => l.indexOf('+919811112222,Ramesh') === 0 && /Rajat,Amit,Rajat \+ Amit/.test(l)), x.csv);
+    assert(lines.some(l => l.indexOf('"=""919811112222""",Ramesh') === 0 && /Rajat,Amit,Rajat \+ Amit/.test(l)), x.csv);
     assert(/\.csv$/.test(x.filename));
     // downloads of the report
     const sm = api('repliesExport', { days: 0, what: 'summary' }).csv.split('\r\n');
@@ -429,6 +429,40 @@ const tests = {
     api('repliesTeach', { text: greet, as: 'real' });
     assert.strictEqual(has('real'), true); assert.strictEqual(has('auto'), false);
     assert(api('repliesTeach', { text: 'x', as: 'auto' }).error);
+  },
+  'leads by what the customer wrote: real, auto-reply only, never replied; counts, filter, download'() {
+    const env = load(Object.assign({}, BASE, { settings: Object.assign({}, BASE.settings, { FIXED_REPLY_ON: 'true' }) }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    api('ownersSave', { name: 'Nivi', phone: '9352254006', numbers: '9811112222, 9811113333, 9811119999' });
+    api('addLead', { phone: '9811119999', name: 'Silent One', welcome: false });
+    post(env, payload([text('919811112222', 'rate batao')]));
+    post(env, payload([text('919811113333', 'Thank you for contacting us. We will get back to you shortly.')]));
+    const sc = api('search', { employee: 'nivi', counts: 1 });
+    assert.strictEqual(JSON.stringify(sc.replyCounts), JSON.stringify({ all: 3, real: 1, auto: 1, none: 1 }));
+    const only = kind => api('search', { employee: 'nivi', reply: kind }).leads;
+    assert.strictEqual(only('real').length, 1); assert.strictEqual(only('real')[0].phone, '919811112222'); assert.strictEqual(only('real')[0].reply, 'real');
+    assert.strictEqual(only('auto').length, 1); assert.strictEqual(only('auto')[0].phone, '919811113333');
+    assert.strictEqual(only('none').length, 1); assert.strictEqual(only('none')[0].phone, '919811119999'); assert.strictEqual(only('none')[0].reply, 'none');
+    assert.strictEqual(api('search', { reply: 'real' }).total, 1);          // without an employee it still filters
+    assert(api('search', {}).replyCounts == null);                          // the plain list does not read the messages
+    // download: every lead of the list, not only the ones shown, with the reply kind and the customer's last message
+    let x = api('leadsExport', { employee: 'nivi' }), lines = x.csv.split('\r\n');
+    assert.strictEqual(lines.length, 4); assert.strictEqual(x.filename, 'amitek-leads-nivi.csv');
+    assert(/^Employee,Name,Business,Phone,Status,Customer replied,Last customer message/.test(lines[0]));
+    assert(lines.some(l => /Silent One/.test(l) && /Never replied/.test(l)), x.csv);
+    assert(lines.some(l => /Auto-reply only/.test(l) && /Thank you for contacting us/.test(l)), x.csv);
+    x = api('leadsExport', { employee: 'nivi', reply: 'real' });
+    assert.strictEqual(x.csv.split('\r\n').length, 2); assert.strictEqual(x.filename, 'amitek-leads-nivi-real-customers.csv');
+    assert(x.csv.indexOf('"=""919811112222"""') >= 0 && /rate batao/.test(x.csv), x.csv);
+    // a customer cannot plant a spreadsheet formula
+    post(env, payload([text('919811112222', '=HYPERLINK("http://x.example","click")')]));
+    assert(api('leadsExport', { employee: 'nivi', reply: 'real' }).csv.indexOf("'=HYPERLINK") >= 0);
+    // teaching changes the groups at once
+    api('repliesTeach', { text: 'Thank you for contacting us', as: 'real' });
+    assert.strictEqual(api('search', { employee: 'nivi', counts: 1 }).replyCounts.real, 2);
+    // a new message moves a never-replied lead
+    post(env, payload([text('919811119999', 'price please')]));
+    assert.strictEqual(api('search', { employee: 'nivi', counts: 1 }).replyCounts.none, 0);
   },
   'app: dashboard, search, lead detail, actions, reply, settings'() {
     const env = load(Object.assign({}, BASE, { claude: [

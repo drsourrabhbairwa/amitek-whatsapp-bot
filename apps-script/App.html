@@ -74,6 +74,8 @@
   .sd.hot { background: var(--hot); } .sd.due { background: var(--due); } .sd.wait { background: var(--wait); }
   .pairrow { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
   .pairrow:last-child { border-bottom: 0; }
+  .rtag { font-size: 10.5px; font-weight: 700; text-align: right; margin-top: 5px; color: var(--muted); white-space: nowrap; }
+  .rtag.r-real { color: var(--ok); } .rtag.r-auto { color: var(--due); }
   .teach { margin-top: 7px; }
   .teach button { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 8px; padding: 3px 9px; font-size: 11.5px; cursor: pointer; }
   .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
@@ -292,7 +294,7 @@
 <div id="sheetBg" class="sheet-bg hidden" onclick="if(event.target===this)closeSheet()"><div class="sheet" id="sheet"></div></div>
 
 <script>
-var S = { pin: '', tab: 'today', lead: null, leadTab: 'chat', q: '', status: '', employee: '', report: null, stack: [], assistantLog: [] };
+var S = { pin: '', tab: 'today', lead: null, leadTab: 'chat', q: '', status: '', employee: '', reply: '', report: null, stack: [], assistantLog: [] };
 var NEED_ORDER = { Hot: 'Hot', Overdue: 'Overdue', 'Waiting reply': 'Waiting' };
 
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
@@ -493,7 +495,8 @@ function leadRow(c) {
     '<div class="name">' + esc(c.name) + '</div><div class="sub">' + esc(sub) + '</div>' +
     (c.note ? '<div class="note">' + esc(c.note) + '</div>' : '') + '</div>' +
     '<div><span class="badge ' + cls + '">' + esc(c.need === 'Active' || c.need === 'Scheduled' ? c.status : c.need) + '</span>' +
-    (right ? '<div class="when">' + esc(right) + '</div>' : '') + '</div></div>';
+    (right ? '<div class="when">' + esc(right) + '</div>' : '') +
+    (c.reply ? '<div class="rtag r-' + esc(c.reply) + '">' + esc(RTAG[c.reply] || '') + '</div>' : '') + '</div></div>';
 }
 function listOf(rows, emptyText) {
   return rows.length ? '<div class="list">' + rows.map(leadRow).join('') + '</div>' : '<div class="empty">' + esc(emptyText) + '</div>';
@@ -552,7 +555,7 @@ function renderLeads() {
   $('main').innerHTML = '<div class="search"><input id="q" type="text" placeholder="Search name, number, city…" value="' + esc(S.q) + '"></div>' +
     '<div class="chips">' + STATUSES.map(function (s) {
       return '<button class="chip' + (S.status === s ? ' on' : '') + '" onclick="setStatus(\'' + s + '\')">' + (s || 'All') + '</button>';
-    }).join('') + '</div><div class="chips" id="empChips"></div><div class="row" style="margin:0 2px 8px">' +
+    }).join('') + '</div><div class="chips" id="empChips"></div><div id="replyBar"></div><div class="row" style="margin:0 2px 8px">' +
     '<div><button class="btn soft" style="width:100%" onclick="openClean()">🧹 Check data</button></div>' +
     '<div><button class="btn soft" style="width:100%" onclick="openManage(\'bulk\')">✏️ Bulk edit</button></div>' +
     '<div><button class="btn soft" style="width:100%" onclick="openManage(\'import\')">⬆️ Import</button></div></div>' +
@@ -563,7 +566,33 @@ function renderLeads() {
   search();
 }
 function setStatus(s) { S.status = s; renderLeads(); }
-function setEmployee(e) { S.employee = e; renderLeads(); }
+function setEmployee(e) { S.employee = e; if (!e) S.reply = ''; S.replyCounts = null; renderLeads(); }
+
+// Leads of one employee, grouped by what the customer wrote: real person, only WhatsApp's automatic reply, or nothing yet.
+var REPLY_LABEL = { real: 'real customers', auto: 'auto-reply only', none: 'never replied' };
+var RTAG = { real: 'Real reply', auto: 'Auto-reply', none: 'No reply' };
+function renderReplyBar(c) {
+  var el = $('replyBar'); if (!el) return;
+  if (!S.employee || !c) { el.innerHTML = ''; return; }
+  var chip = function (key, label, n) {
+    return '<button class="chip' + (S.reply === key ? ' on' : '') + '" onclick="setReply(\'' + key + '\')">' + label + ' · ' + n + '</button>';
+  };
+  el.innerHTML = '<div class="chips" style="flex-wrap:wrap">' + chip('', 'All', c.all) + chip('real', 'Real customers', c.real) + chip('auto', 'Auto-reply only', c.auto) +
+    chip('none', 'Never replied', c.none) + '</div>' +
+    '<div class="row" style="margin:0 0 6px"><div><button class="btn soft" style="width:100%" onclick="downloadLeads()">⬇ Download this list</button></div>' +
+    '<div><button class="btn soft" style="width:100%" onclick="copyLeads()">⧉ Copy for Sheets</button></div></div>' +
+    '<div class="info" style="margin:0 2px 8px"><b>Real</b> = wrote themselves · <b>Auto</b> = only WhatsApp\'s automatic reply · <b>Never</b> = no message yet. Download has the whole list.</div>';
+}
+function setReply(k) {
+  S.reply = k; renderReplyBar(S.replyCounts);
+  $('results').innerHTML = '<div class="loading">Loading…</div>'; search();
+}
+function leadsExportArgs() { return { q: S.q, status: S.status, employee: S.employee, reply: S.employee ? S.reply : '' }; }
+function downloadLeads() {
+  toast('Preparing the file…');
+  call('leadsExport', leadsExportArgs()).then(function (r) { saveCsv(r.filename, r.csv); }).catch(fail);
+}
+function copyLeads() { call('leadsExport', leadsExportArgs()).then(function (r) { copyCsv(r.csv); }).catch(fail); }
 // Staff chips: "All staff" plus one chip per employee ('Assigned To') with their lead count.
 function renderStaffChips(list) {
   var el = $('empChips'); if (!el) return;
@@ -854,13 +883,14 @@ function deleteLeadNow() {
   }).catch(fail);
 }
 function search() {
-  var q = S.q, st = S.status, emp = S.employee;
-  call('search', { q: q, status: st, employee: emp }).then(function (r) {
-    if (S.tab !== 'leads' || S.lead || q !== S.q || st !== S.status || emp !== S.employee) return;
+  var q = S.q, st = S.status, emp = S.employee, rp = emp ? S.reply : '';
+  call('search', { q: q, status: st, employee: emp, reply: rp, counts: emp ? 1 : 0 }).then(function (r) {
+    if (S.tab !== 'leads' || S.lead || q !== S.q || st !== S.status || emp !== S.employee || rp !== (S.employee ? S.reply : '')) return;
     renderStaffChips(r.employees || []);
-    $('results').innerHTML = '<div class="info" style="margin:0 2px 8px">' + r.total + ' leads' +
+    S.replyCounts = r.replyCounts || null; renderReplyBar(S.replyCounts);
+    $('results').innerHTML = '<div class="info" style="margin:0 2px 8px">' + r.total + ' leads' + (rp ? ' · ' + REPLY_LABEL[rp] : '') +
       (emp ? ' for ' + esc(emp === 'unassigned' ? 'no one' : emp) : '') +
-      (r.total > r.leads.length ? ', showing ' + r.leads.length : '') + '</div>' +
+      (r.total > r.leads.length ? ', showing ' + r.leads.length + (emp ? ' (download for all)' : '') : '') + '</div>' +
       listOf(r.leads, 'No leads found');
   }).catch(fail);
 }

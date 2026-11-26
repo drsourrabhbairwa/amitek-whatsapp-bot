@@ -37,7 +37,7 @@ function api(pin, action, argsJson) {
   }
   // Slow AI actions only append rows, and the screens below only read, so none of them waits behind (or holds up)
   // an incoming WhatsApp message. Everything else that writes still takes the one script lock.
-  var readOnly = !!{ dashboard: 1, search: 1, lead: 1, settings: 1, status: 1, cleanCheck: 1, tgStatus: 1, ownersStatus: 1, repliesReport: 1, repliesExport: 1, commonLeads: 1, commonExport: 1 }[action];
+  var readOnly = !!{ dashboard: 1, search: 1, lead: 1, settings: 1, status: 1, cleanCheck: 1, tgStatus: 1, ownersStatus: 1, repliesReport: 1, repliesExport: 1, commonLeads: 1, commonExport: 1, leadsExport: 1 }[action];
   var lock = (readOnly || { sortRun: 1, learnChats: 1, learnText: 1 }[action])
     ? { releaseLock: function () {} } : LockService.getScriptLock();
   if (lock.waitLock) lock.waitLock(25000);
@@ -182,6 +182,50 @@ function need_(l, now) {
   if (li && (!answered || answered < li)) return 'Waiting reply';
   if (nf) return 'Scheduled';
   return 'Active';
+}
+
+/** The leads behind the Leads screen: matched by search text, status, employee, and (optionally) what the customer wrote:
+ *  reply = "real" (wrote at least one message themselves), "auto" (only WhatsApp's automatic reply), "none" (never wrote). */
+function searchLeads_(a) {
+  var q = String(a.q || '').toLowerCase().trim();
+  var digits = q.replace(/\D/g, '');
+  var status = a.status || '';
+  var employee = String(a.employee || '').toLowerCase().trim();
+  var reply = { real: 1, auto: 1, none: 1 }[a.reply] ? a.reply : '';
+  var all = allLeadsCached_();
+  // Who owns a lead: the employee whose own list has its number (Lead Owners tab, same as the Employees section).
+  // Counts cover every lead, so the staff chips show totals before any search.
+  var owners = ownerMap_();
+  var ownerOfLead = function (l) { var o = owners[normPhone_(l['Phone'])]; return o ? o.employee : ''; };
+  var perStaff = {};
+  all.forEach(function (l) {
+    var who = ownerOfLead(l) || 'Unassigned';
+    perStaff[who] = (perStaff[who] || 0) + 1;
+  });
+  var employees = Object.keys(perStaff).map(function (k) { return { name: k, count: perStaff[k] }; })
+    .sort(function (x, y) { return y.count - x.count || x.name.localeCompare(y.name); });
+  var base = all.filter(function (l) {
+    if (employee) {
+      var owner = ownerOfLead(l).toLowerCase();
+      if (employee === 'unassigned' ? owner !== '' : owner !== employee) return false;
+    }
+    if (status && l['Status'] !== status) return false;
+    if (!q) return true;
+    if (digits.length >= 4 && String(l['Phone']).indexOf(digits) >= 0) return true;
+    return [l['Name'], l['Business'], l['City'], l['Category'], l['Lead ID']].some(function (x) {
+      return String(x || '').toLowerCase().indexOf(q) >= 0;
+    });
+  });
+  var kinds = null, counts = null, scan = null;
+  if (reply || a.counts || a.withLast) {   // reading the messages costs a little, so only when the reply kind is wanted
+    scan = a.withLast ? replyScan_(true) : null;
+    kinds = scan ? scan.kinds : replyKindByPhone_();
+    counts = { all: base.length, real: 0, auto: 0, none: 0 };
+    base.forEach(function (l) { counts[kinds[normPhone_(l['Phone'])] || 'none']++; });
+  }
+  var out = reply ? base.filter(function (l) { return (kinds[normPhone_(l['Phone'])] || 'none') === reply; }) : base;
+  out.sort(function (x, y) { return (asDate_(y['Updated']) || 0) - (asDate_(x['Updated']) || 0); });
+  return { out: out, employees: employees, counts: counts, kinds: kinds, scan: scan, ownerOfLead: ownerOfLead };
 }
 
 function card_(l, now) {
@@ -331,37 +375,13 @@ var APP_ACTIONS = {
   },
 
   search: function (a) {
-    var q = String(a.q || '').toLowerCase().trim();
-    var digits = q.replace(/\D/g, '');
-    var now = new Date();
-    var status = a.status || '';
-    var employee = String(a.employee || '').toLowerCase().trim();
-    var all = allLeadsCached_();
-    // Who owns a lead: the employee whose own list has its number (Lead Owners tab, same as the Employees section).
-    // Counts cover every lead, so the staff chips show totals before any search.
-    var owners = ownerMap_();
-    var ownerOfLead = function (l) { var o = owners[normPhone_(l['Phone'])]; return o ? o.employee : ''; };
-    var perStaff = {};
-    all.forEach(function (l) {
-      var who = ownerOfLead(l) || 'Unassigned';
-      perStaff[who] = (perStaff[who] || 0) + 1;
-    });
-    var employees = Object.keys(perStaff).map(function (k) { return { name: k, count: perStaff[k] }; })
-      .sort(function (x, y) { return y.count - x.count || x.name.localeCompare(y.name); });
-    var out = all.filter(function (l) {
-      if (employee) {
-        var owner = ownerOfLead(l).toLowerCase();
-        if (employee === 'unassigned' ? owner !== '' : owner !== employee) return false;
-      }
-      if (status && l['Status'] !== status) return false;
-      if (!q) return true;
-      if (digits.length >= 4 && String(l['Phone']).indexOf(digits) >= 0) return true;
-      return [l['Name'], l['Business'], l['City'], l['Category'], l['Lead ID']].some(function (x) {
-        return String(x || '').toLowerCase().indexOf(q) >= 0;
-      });
-    });
-    out.sort(function (a, b) { return (asDate_(b['Updated']) || 0) - (asDate_(a['Updated']) || 0); });
-    return { total: out.length, leads: out.slice(0, 60).map(function (l) { return card_(l, now); }), employees: employees };
+    var f = searchLeads_(a), now = new Date();
+    return { total: f.out.length, employees: f.employees, replyCounts: f.counts,
+             leads: f.out.slice(0, 60).map(function (l) {
+               var c = card_(l, now);
+               if (f.kinds) c.reply = f.kinds[normPhone_(l['Phone'])] || 'none';
+               return c;
+             }) };
   },
 
   lead: function (a) {

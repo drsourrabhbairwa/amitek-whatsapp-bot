@@ -392,7 +392,15 @@ function repliesReport_(a) {
   return out;
 }
 
-function csvCell_(v) { var t = String(v == null ? '' : v).replace(/\r?\n/g, ' '); return /[",]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; }
+/** One CSV cell. Text a customer wrote can never act as a spreadsheet formula (a leading = + - @ gets a ' in front);
+ *  a phone number (csvPhone_) is written so Excel and Sheets keep every digit instead of showing 2.34816E+12. */
+function csvCell_(v) {
+  var t;
+  if (v && typeof v === 'object' && v.phone) t = '="' + v.phone + '"';
+  else { t = String(v == null ? '' : v).replace(/\r?\n/g, ' '); if (/^[=+\-@\t\r]/.test(t) && !/^[+-]?\d[\d .,]*$/.test(t)) t = "'" + t; }
+  return /[",]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+}
+function csvPhone_(p) { return { phone: String(p || '').replace(/\D/g, '') }; }
 function csvLine_(arr) { return arr.map(csvCell_).join(','); }
 
 /** A CSV to download: "summary" = one line per employee; "real" / "auto" = the messages (up to 20,000, newest first). */
@@ -410,7 +418,7 @@ function repliesExport_(a) {
     lines = [csvLine_(['Time', 'Employee', 'Name', 'Phone', 'Type', 'Message'])];
     d.listed.slice(0, 20000).forEach(function (x) {
       var m = replyMessage_(x, d.byPhone, 1000);
-      lines.push(csvLine_([fmt_(x.when), m.employee, m.name, m.phone, what === 'auto' ? 'Automatic reply (customer WhatsApp)' : 'Real reply', m.text]));
+      lines.push(csvLine_([fmt_(x.when), m.employee, m.name, csvPhone_(m.phone), what === 'auto' ? 'Automatic reply (customer WhatsApp)' : 'Real reply', m.text]));
     });
   }
   return { filename: 'amitek-' + (what === 'summary' ? 'employee-summary' : what + '-replies') + '-' + label + '.csv', csv: lines.join('\r\n') };
@@ -449,9 +457,78 @@ function commonLeads_(a) {
 function commonExport_(a) {
   var d = commonLeadsData_(a), lines = [csvLine_(['Phone', 'Name', 'Status', 'Stays with', 'Also in the list of', 'All employees', 'Last wrote to us'])];
   d.rows.forEach(function (r) {
-    lines.push(csvLine_(['+' + r.phone, r.name, r.status || (r.inLeads ? '' : 'Not in the lead list yet'), r.keeps, r.employees.slice(1).join(', '), r.employees.join(' + '), r.lastIn ? fmt_(asDate_(r.lastIn)) : '']));
+    lines.push(csvLine_([csvPhone_(r.phone), r.name, r.status || (r.inLeads ? '' : 'Not in the lead list yet'), r.keeps, r.employees.slice(1).join(', '), r.employees.join(' + '), r.lastIn ? fmt_(asDate_(r.lastIn)) : '']));
   });
   return { filename: 'amitek-common-leads' + (a && a.employee ? '-' + String(a.employee).toLowerCase().replace(/[^a-z0-9]+/g, '-') : '') + '.csv', csv: lines.join('\r\n') };
+}
+
+/** Reads every customer message once. kinds: number -> "real" (at least one message a person wrote) or "auto" (only automatic replies);
+ *  a number that never wrote is not in it. withLast also gives each number's latest message (a person's if there is one). */
+function replyScan_(withLast) {
+  var sh = sheet_(SHEETS.messages), last = sh.getLastRow();
+  var rows = last < 2 ? [] : sh.getRange(2, 1, last - 1, 5).getValues();   // Time, Phone, Direction, Sender, Body
+  var rules = replyRules_(), same = {}, kinds = {}, latest = {}, latestReal = {};
+  rows.forEach(function (r) {
+    if (r[2] !== 'in' || r[3] !== 'lead') return;
+    var k = replyKey_(r[4]);
+    if (k.length < 20) return;
+    var seen = same[k] || (same[k] = { n: 0, by: {} });
+    if (!seen.by[r[1]]) { seen.by[r[1]] = 1; seen.n++; }
+  });
+  rows.forEach(function (r) {
+    if (r[2] !== 'in' || r[3] !== 'lead') return;
+    var ph = normPhone_(r[1]), k = replyKey_(r[4]);
+    var kind = replyKind_(r[4], k.length >= 20 && same[k] ? same[k].n : 0, rules);
+    if (kind === 'real') kinds[ph] = 'real'; else if (!kinds[ph]) kinds[ph] = 'auto';
+    if (withLast) {
+      var item = { when: asDate_(r[0]), text: String(r[4]) };
+      latest[ph] = item;
+      if (kind === 'real') latestReal[ph] = item;
+    }
+  });
+  return { kinds: kinds, last: withLast ? { any: latest, real: latestReal } : null };
+}
+
+/** Number -> "real" / "auto" for the Leads screen. Kept for 5 minutes, and a new message or a taught rule starts it fresh. */
+function replyKindByPhone_() {
+  var cache = null, key = '';
+  try {
+    cache = CacheService.getScriptCache();
+    key = 'lk_' + (cache.get('rr_ver') || '0') + '_' + sheet_(SHEETS.messages).getLastRow();
+    var hit = cache.get(key);
+    if (hit) {
+      var o = JSON.parse(hit), m = {};
+      String(o.r).split(',').forEach(function (p) { if (p) m[p] = 'real'; });
+      String(o.a).split(',').forEach(function (p) { if (p) m[p] = 'auto'; });
+      return m;
+    }
+  } catch (err) { cache = null; }
+  var kinds = replyScan_(false).kinds;
+  try {
+    var r = [], au = [];
+    Object.keys(kinds).forEach(function (p) { (kinds[p] === 'real' ? r : au).push(p); });
+    var txt = JSON.stringify({ r: r.join(','), a: au.join(',') });
+    if (cache && txt.length < 90000) cache.put(key, txt, 300);
+  } catch (err) { /* only a speed-up */ }
+  return kinds;
+}
+
+var REPLY_KIND_LABEL = { real: 'Real customer', auto: 'Auto-reply only', none: 'Never replied' };
+
+/** CSV of the leads on the Leads screen (whatever search, status, employee and reply filter is set), all of them, not only the 60 shown. */
+function leadsExport_(a) {
+  var f = searchLeads_({ q: a.q, status: a.status, employee: a.employee, reply: a.reply, withLast: true });
+  var last = f.scan.last, kinds = f.kinds;
+  var lines = [csvLine_(['Employee', 'Name', 'Business', 'Phone', 'Status', 'Customer replied', 'Last customer message', 'Message time', 'Category', 'City', 'Follow-up note'])];
+  f.out.forEach(function (l) {
+    var ph = normPhone_(l['Phone']), kind = kinds[ph] || 'none';
+    var m = (kind === 'real' ? last.real[ph] : last.any[ph]) || null;
+    lines.push(csvLine_([f.ownerOfLead(l) || 'Unassigned', l['Name'], l['Business'], csvPhone_(ph), l['Status'], REPLY_KIND_LABEL[kind],
+                         m ? m.text.slice(0, 500) : '', m && m.when ? fmt_(m.when) : '', l['Category'], l['City'], l['Follow-up Note']]));
+  });
+  var who = String(a.employee || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  var name = 'amitek-leads' + (who ? '-' + who : '') + ({ real: '-real-customers', auto: '-auto-reply-only', none: '-never-replied' }[a.reply] || '') + '.csv';
+  return { filename: name, csv: lines.join('\r\n'), count: f.out.length };
 }
 
 /** Teach the filter: this kind of message is auto (or real) from now on. The phrase is the start of the message. */
@@ -479,6 +556,7 @@ var OWNER_ACTIONS = {
   repliesTeach: function (a) { return repliesTeach_(a || {}); },
   commonLeads: function (a) { return commonLeads_(a || {}); },
   commonExport: function (a) { return commonExport_(a || {}); },
+  leadsExport: function (a) { return leadsExport_(a || {}); },
   ownersStatus: function () { return { employees: ownersOverview_() }; },
   /** Saves an employee (name + their own WhatsApp) and adds the pasted numbers to their list, in any format. */
   ownersSave: function (a) {
