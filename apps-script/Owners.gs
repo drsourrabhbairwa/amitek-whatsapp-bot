@@ -469,7 +469,7 @@ function repliesTeach_(a) {
   if (i >= 0) sh.getRange(i + 2, 2).setValue(val); else sh.appendRow(['REPLY_RULES', val, 'Taught in the app: messages starting like these are auto-replies or real replies']);
   settingsCache_ = null;
   logChange_('', 'app', 'Reply rule: "' + phrase + '" is ' + to);
-  try { CacheService.getScriptCache().put('rr_ver', String(Date.now()), 3600); } catch (err) { /* only a speed-up */ }
+  try { CacheService.getScriptCache().put('rr_ver', Date.now() + '-' + Math.random().toString(36).slice(2, 7), 3600); } catch (err) { /* only a speed-up */ }
   return { message: 'Learned: messages that start like this are now ' + (to === 'auto' ? 'auto-replies' : 'real replies') };
 }
 
