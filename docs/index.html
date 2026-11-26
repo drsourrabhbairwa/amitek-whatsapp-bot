@@ -51,8 +51,32 @@
   .tile b { display: block; font-size: 22px; line-height: 1.1; font-weight: 800; letter-spacing: -.02em; }
   .tile span { font-size: 10.5px; color: var(--muted); font-weight: 600; }
   .tile.hot b { color: var(--hot); } .tile.due b { color: var(--due); } .tile.wait b { color: var(--wait); }
-  .botbar { display: flex; align-items: center; gap: 9px; background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-    padding: 11px 13px; margin-bottom: 16px; font-size: 13px; cursor: pointer; box-shadow: var(--shadow); }
+  .botbar { display: flex; align-items: center; gap: 8px; padding: 2px 2px 11px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+  .kpis { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    box-shadow: var(--shadow); overflow: hidden; margin-bottom: 10px; }
+  .kpi { padding: 13px 12px 12px; cursor: pointer; min-width: 0; }
+  .kpi + .kpi { border-left: 1px solid var(--line); }
+  .kpi:active { background: var(--grey-soft); }
+  .kpi span { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  .kpi b { display: block; font-size: 24px; line-height: 1.1; font-weight: 800; letter-spacing: -.02em; margin-top: 5px; font-variant-numeric: tabular-nums; }
+  .kpi small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kpi.hot { background: var(--hot-soft); } .kpi.hot b { font-size: 34px; color: var(--hot); }
+  .kpi.due b { color: var(--due); } .kpi.wait b { color: var(--wait); }
+  .pulse { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 9px; padding: 0 2px; margin-bottom: 12px; font-size: 12.5px; color: var(--muted); }
+  .pulse b { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pulse i { width: 3px; height: 3px; border-radius: 50%; background: var(--muted); opacity: .5; }
+  .linkrow { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 11px 14px; cursor: pointer; box-shadow: var(--shadow); }
+  .linkrow > div { flex: 1; min-width: 0; } .linkrow b { display: block; font-size: 14px; }
+  .linkrow small { color: var(--muted); font-size: 12px; } .linkrow > span { color: var(--muted); font-size: 20px; }
+  h2.sec { display: flex; align-items: center; gap: 8px; margin: 22px 2px 9px; }
+  h2.sec em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sd { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .sd.hot { background: var(--hot); } .sd.due { background: var(--due); } .sd.wait { background: var(--wait); }
+  .pairrow { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .pairrow:last-child { border-bottom: 0; }
+  .teach { margin-top: 7px; }
+  .teach button { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 8px; padding: 3px 9px; font-size: 11.5px; cursor: pointer; }
   .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
   h2 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 20px 2px 9px; font-weight: 700; }
   .list { display: flex; flex-direction: column; gap: 9px; }
@@ -434,17 +458,24 @@ function renderToday() {
   call('dashboard').then(function (d) {
     if (S.tab !== 'today' || S.lead) return;
     var c = d.counts;
+    var kpi = function (cls, label, n, sub, js) {
+      return '<div class="kpi ' + cls + '" onclick="' + js + '"><span>' + label + '</span><b>' + n + '</b><small>' + sub + '</small></div>';
+    };
+    var sec = function (id, cls, title, n) {
+      return '<h2 class="sec"' + (id ? ' id="sec-' + id + '"' : '') + '><i class="sd ' + cls + '"></i>' + title + '<em>' + n + '</em></h2>';
+    };
     $('main').innerHTML = botBar(d.bot) +
-      '<div class="tiles">' +
-      '<div class="tile hot" onclick="jump(\'hot\')"><b>' + c.hot + '</b><span>Hot</span></div>' +
-      '<div class="tile due" onclick="jump(\'overdue\')"><b>' + c.overdue + '</b><span>Overdue</span></div>' +
-      '<div class="tile wait" onclick="jump(\'waiting\')"><b>' + c.waiting + '</b><span>Waiting</span></div>' +
-      '<div class="tile" onclick="showTab(\'leads\')"><b>' + c.active + '</b><span>Active</span></div></div>' +
-      '<div class="info" style="margin:0 2px">' + c.wrote7d + ' wrote this week · ' + c.won + ' won · ' + c.total + ' leads in total</div>' +
-      '<h2 id="sec-hot">🔥 Hot, call first</h2>' + listOf(d.hot, 'No hot leads right now') +
-      '<h2 id="sec-overdue">⏰ Follow-up due</h2>' + listOf(d.overdue, 'Nothing overdue 👍') +
-      '<h2 id="sec-waiting">💬 Waiting for a reply</h2>' + listOf(d.waiting, 'Nobody is waiting') +
-      '<h2>📅 Coming up</h2>' + listOf(d.scheduled, 'No follow-ups scheduled');
+      '<div class="kpis">' +
+      kpi('hot', 'Hot', c.hot, 'call first', "jump('hot')") +
+      kpi('due', 'Overdue', c.overdue, 'follow-ups', "jump('overdue')") +
+      kpi('wait', 'Waiting', c.waiting, 'for a reply', "jump('waiting')") +
+      kpi('', 'Active', c.active, 'leads', "showTab('leads')") + '</div>' +
+      '<div class="pulse"><span><b>' + c.wrote7d + '</b> wrote this week</span><i></i><span><b>' + c.won + '</b> won</span><i></i><span><b>' + c.total + '</b> leads</span></div>' +
+      '<div class="linkrow" onclick="reportFromToday()"><div><b>Replies by employee</b><small>Real replies, WhatsApp auto-replies, common leads, CSV</small></div><span>›</span></div>' +
+      sec('hot', 'hot', 'Hot, call first', c.hot) + listOf(d.hot, 'No hot leads right now') +
+      sec('overdue', 'due', 'Follow-up due', c.overdue) + listOf(d.overdue, 'Nothing overdue') +
+      sec('waiting', 'wait', 'Waiting for a reply', c.waiting) + listOf(d.waiting, 'Nobody is waiting') +
+      sec('', '', 'Coming up', d.scheduled.length) + listOf(d.scheduled, 'No follow-ups scheduled');
   }).catch(fail);
 }
 function jump(id) { var el = $('sec-' + id); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
@@ -486,38 +517,111 @@ function renderStaffChips(list) {
 var REPORT_DAYS = [[1, 'Today'], [7, '7 days'], [30, '30 days'], [0, 'All time']];
 function openReport() { S.report = S.report || { days: 30, employee: '', kind: 'real' }; render(); window.scrollTo(0, 0); }
 function reportSet(k, v) { S.report[k] = v; renderReport(); }
+function reportKey() { var R = S.report; return R.days + '|' + R.employee + '|' + R.kind; }
+function reportFromToday() { S.tab = 'leads'; S.lead = null; S.clean = false; S.manage = ''; openReport(); }
 function renderReport() {
+  var R = S.report, k = reportKey();
+  setHeader('Replies by employee', true);
+  S.repCache = S.repCache || {};
+  if (S.repCache[k]) paintReport(S.repCache[k]); else loading();   // the last answer shows at once, then refreshes
+  var base = call('repliesReport', { days: R.days, employee: R.employee, kind: R.kind === 'auto' ? 'auto' : 'real' });
+  var req = R.kind === 'common'
+    ? Promise.all([base, call('commonLeads', { employee: R.employee })]).then(function (x) { x[0].shared = x[1]; return x[0]; })
+    : base;
+  req.then(function (r) {
+    S.repCache[k] = r;
+    if (S.report && !S.lead && k === reportKey()) paintReport(r);
+  }).catch(fail);
+}
+function paintReport(r) {
   var R = S.report;
-  setHeader('Replies by employee', true); loading();
-  call('repliesReport', { days: R.days, employee: R.employee, kind: R.kind }).then(function (r) {
-    if (!S.report || S.lead) return;
-    var chip = function (on, label, js) { return '<button class="chip' + (on ? ' on' : '') + '" onclick="' + js + '">' + label + '</button>'; };
-    var row = function (e, key) {
-      return '<div class="rep-row' + (R.employee === key ? ' on' : '') + '" data-e="' + esc(key) + '" onclick="reportSet(\'employee\',this.dataset.e)">' +
-        '<b>' + esc(e.name) + '</b><span>' + e.leads + '</span><span>' + e.sent + '</span><span class="ok">' + e.real + '</span>' +
-        '<span>' + e.auto + '</span><span>' + e.bot + '</span></div>';
-    };
-    var tot = r.total;
-    var html = '<div class="chips">' + REPORT_DAYS.map(function (d) {
+  if (!R || S.lead) return;
+  S.repMsgs = r.messages;
+  var chip = function (on, label, js) { return '<button class="chip' + (on ? ' on' : '') + '" onclick="' + js + '">' + label + '</button>'; };
+  var row = function (e, key) {
+    return '<div class="rep-row' + (R.employee === key ? ' on' : '') + '" data-e="' + esc(key) + '" onclick="reportSet(\'employee\',this.dataset.e)">' +
+      '<b>' + esc(e.name) + '</b><span>' + e.leads + '</span><span>' + e.sent + '</span><span class="ok">' + e.real + '</span>' +
+      '<span>' + e.auto + '</span><span>' + e.bot + '</span></div>';
+  };
+  var tot = r.total, teachTo = R.kind === 'auto' ? 'real' : 'auto', isCommon = R.kind === 'common';
+  $('main').innerHTML = '<div class="chips">' + REPORT_DAYS.map(function (d) {
       return chip(R.days === d[0], d[1], 'reportSet(\'days\',' + d[0] + ')');
     }).join('') + '</div>' +
-      '<div class="card" style="padding:6px 10px"><div class="rep-row head"><b>Employee</b><span>Leads</span><span>Sent</span><span>Real replies</span><span>Auto</span><span>Our bot</span></div>' +
-      row(tot, '') + r.employees.map(function (e) { return row(e, e.name === 'Unassigned' ? 'unassigned' : e.name); }).join('') + '</div>' +
-      '<div class="info" style="margin:6px 2px 10px">Tap a name to see only that employee. <b>Real replies</b> = customers who wrote themselves; ' +
-      '<b>Auto</b> = likely auto-replies (away or thank-you messages, or the same text from many numbers); <b>Our bot</b> = automatic replies this bot sent.</div>' +
-      '<div class="chips">' +
-      chip(R.kind === 'real', 'Real customer replies · ' + tot.real, 'reportSet(\'kind\',\'real\')') +
-      chip(R.kind === 'auto', 'Auto-replies · ' + tot.auto, 'reportSet(\'kind\',\'auto\')') + '</div>' +
-      '<div class="info" style="margin:0 2px 8px">' + r.count + (R.kind === 'auto' ? ' likely auto-replies' : ' real replies') +
-      (R.employee ? ' for ' + esc(R.employee === 'unassigned' ? 'no employee' : R.employee) : '') +
-      (r.count > r.messages.length ? ', showing latest ' + r.messages.length : '') + '</div>' +
-      (r.messages.length ? '<div class="list">' + r.messages.map(function (m) {
-        return '<div class="lead" onclick="openLead(\'' + esc(m.phone) + '\')"><div class="avatar">' + esc(initials(m.name)) + '</div><div class="main">' +
-          '<div class="name">' + esc(m.name) + ' <span class="info">· ' + esc(m.employee) + '</span></div>' +
-          '<div class="note">' + esc(m.text) + '</div></div><div class="when">' + esc(when(m.time)) + '</div></div>';
-      }).join('') + '</div>' : '<div class="empty">No messages here yet</div>');
-    $('main').innerHTML = html;
-  }).catch(fail);
+    '<div class="card" style="padding:6px 10px"><div class="rep-row head"><b>Employee</b><span>Leads</span><span>Sent</span><span>Real replies</span><span>Auto</span><span>Bot</span></div>' +
+    row(tot, '') + r.employees.map(function (e) { return row(e, e.name === 'Unassigned' ? 'unassigned' : e.name); }).join('') + '</div>' +
+    '<div class="info" style="margin:6px 2px 10px">Tap a name to see only that employee. <b>Real replies</b> = customers who wrote themselves; ' +
+    '<b>Auto</b> = the automatic reply a customer\'s WhatsApp sends by itself (away or thank-you message, or the same text from many numbers); <b>Bot</b> = replies this bot sent.</div>' +
+    '<div class="row" style="margin:0 0 10px">' +
+    '<div><button class="btn soft" style="width:100%" onclick="downloadReport(\'summary\')">⬇ Summary</button></div>' +
+    '<div><button class="btn soft" style="width:100%" onclick="downloadReport(\'messages\')">⬇ ' + (isCommon ? 'Common' : 'Messages') + '</button></div>' +
+    '<div><button class="btn soft" style="width:100%" onclick="copyReport()">⧉ Copy</button></div></div>' +
+    '<div class="chips" style="flex-wrap:wrap">' +
+    chip(R.kind === 'real', 'Real replies · ' + tot.real, 'reportSet(\'kind\',\'real\')') +
+    chip(R.kind === 'auto', 'Auto · ' + tot.auto, 'reportSet(\'kind\',\'auto\')') +
+    chip(isCommon, 'Common leads · ' + (r.common || 0), 'reportSet(\'kind\',\'common\')') + '</div>' +
+    (isCommon ? commonBlock(r.shared) :
+    '<div class="info" style="margin:0 2px 8px">' + r.count + (R.kind === 'auto' ? ' automatic replies' : ' real replies') +
+    (R.employee ? ' for ' + esc(R.employee === 'unassigned' ? 'no employee' : R.employee) : '') +
+    (r.count > r.messages.length ? ', showing latest ' + r.messages.length + ' (download for all)' : '') + '</div>' +
+    (r.messages.length ? '<div class="list">' + r.messages.map(function (m, i) {
+      return '<div class="lead" onclick="openLead(\'' + esc(m.phone) + '\')"><div class="avatar">' + esc(initials(m.name)) + '</div><div class="main">' +
+        '<div class="name">' + esc(m.name) + ' <span class="info">· ' + esc(m.employee) + '</span></div>' +
+        '<div class="note">' + esc(m.text) + '</div>' +
+        '<div class="teach"><button onclick="event.stopPropagation();teachReply(' + i + ',\'' + teachTo + '\')">' +
+        (teachTo === 'auto' ? 'Not a person? Mark as auto-reply' : 'It is a person: mark as real') + '</button></div></div>' +
+        '<div class="when">' + esc(when(m.time)) + '</div></div>';
+    }).join('') + '</div>' : '<div class="empty">No messages here yet</div>'));
+}
+// Numbers that are in the lists of two or more employees
+function commonBlock(c) {
+  if (!c) return '<div class="empty">Loading…</div>';
+  var R = S.report, who = R.employee ? ' with ' + esc(R.employee === 'unassigned' ? 'no employee' : R.employee) : '';
+  if (!c.leads.length) return '<div class="empty">' + (c.all ? 'No common lead' + who : 'No number is in two employees\' lists') + '</div>';
+  var pairs = c.pairs.length > 1 || R.employee
+    ? '<div class="card" style="padding:4px 12px;margin-bottom:10px">' + c.pairs.map(function (p) {
+        return '<div class="pairrow"><span>' +
+          esc(p.names) + '</span><b>' + p.count + '</b></div>';
+      }).join('') + '</div>' : '';
+  return '<div class="info" style="margin:0 2px 8px"><b>' + c.count + '</b> number' + (c.count === 1 ? ' is' : 's are') + ' in more than one employee\'s list' + who +
+    '. The first name keeps the lead.' + (c.count > c.leads.length ? ' Showing ' + c.leads.length + ' (download for all).' : '') + '</div>' + pairs +
+    '<div class="list">' + c.leads.map(function (x) {
+      var open = x.inLeads ? 'openLead(\'' + esc(x.phone) + '\')' : 'toast(\'Not in the lead list yet\')';
+      return '<div class="lead" onclick="' + open + '"><div class="avatar">' + (x.name ? esc(initials(x.name)) : '#') + '</div><div class="main">' +
+        '<div class="name">' + esc(x.name || '+' + x.phone) + '</div>' +
+        '<div class="sub"><b>' + esc(x.employees[0]) + '</b>' + x.employees.slice(1).map(function (n) { return ' · ' + esc(n); }).join('') + '</div>' +
+        (x.name ? '<div class="note">+' + esc(x.phone) + '</div>' : '') + '</div>' +
+        '<div class="when">' + esc(x.status || (x.inLeads ? '' : 'new')) + (x.lastIn ? '<br>' + esc(when(x.lastIn)) : '') + '</div></div>';
+    }).join('') + '</div>';
+}
+function teachReply(i, as) {
+  var m = (S.repMsgs || [])[i]; if (!m) return;
+  call('repliesTeach', { text: m.text, as: as }).then(function (r) { toast(r.message); S.repCache = {}; renderReport(); }).catch(fail);
+}
+function reportExport(what) {
+  var R = S.report;
+  return call('repliesExport', { days: R.days, employee: R.employee, what: what === 'messages' ? (R.kind === 'auto' ? 'auto' : 'real') : 'summary' });
+}
+function downloadReport(what) {
+  toast('Preparing the file…');
+  var R = S.report, job = what === 'messages' && R.kind === 'common' ? call('commonExport', { employee: R.employee }) : reportExport(what);
+  job.then(function (r) { saveCsv(r.filename, r.csv); }).catch(fail);
+}
+function copyReport() {
+  var R = S.report, job = R.kind === 'common' ? call('commonExport', { employee: R.employee }) : reportExport('messages');
+  job.then(function (r) { copyCsv(r.csv); }).catch(fail);
+}
+function copyCsv(csv) {
+  var done = function () { toast('Copied. Paste it into Google Sheets or Excel'); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(csv).then(done, function () { toast('Could not copy', true); });
+  else toast('Could not copy', true);
+}
+function saveCsv(name, csv) {
+  if (window.AmitekNative || !window.URL || !URL.createObjectURL) { copyCsv(csv); return; }   // the phone app cannot save files: copy instead
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  toast('Downloaded ' + name);
 }
 
 // ---------------------------------------------------------------- Check lead data

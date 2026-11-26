@@ -392,6 +392,44 @@ const tests = {
     assert.strictEqual(api('repliesReport', { kind: 'real', employee: 'unassigned' }).messages.length, 0);
     assert.strictEqual(api('repliesReport', { days: 1 }).total.real, 1);
   },
+  'common leads: numbers in two or more employees\' lists, groups, filter, CSV; teaching the filter'() {
+    const env = load(Object.assign({}, BASE, { settings: Object.assign({}, BASE.settings, { FIXED_REPLY_ON: 'true' }) }));
+    const api = (a, x) => JSON.parse(env.ctx.api('123456', a, JSON.stringify(x || {})));
+    api('ownersSave', { name: 'Rajat', phone: '9800000011', numbers: '9811112222, 9811110001' });
+    api('ownersSave', { name: 'Amit', phone: '9800000012', numbers: '9811112222, 9811110001, 9811110005' });
+    api('ownersSave', { name: 'Sourabh', phone: '9800000013', numbers: '9811110001' });
+    post(env, payload([text(CUST, 'rate batao')], [{ wa_id: CUST, profile: { name: 'Ramesh' } }]));
+    const c = api('commonLeads');
+    assert.strictEqual(c.all, 2); assert.strictEqual(c.count, 2);
+    const ramesh = c.leads.find(x => x.phone === CUST);
+    assert.strictEqual(ramesh.name, 'Ramesh'); assert.strictEqual(ramesh.keeps, 'Rajat'); assert.strictEqual(JSON.stringify(ramesh.employees), '["Rajat","Amit"]');
+    assert.strictEqual(c.leads.find(x => x.phone === '919811110001').inLeads, false);
+    assert.strictEqual(JSON.stringify(c.pairs.map(p => p.names).sort()), '["Amit + Rajat","Amit + Rajat + Sourabh"]');
+    assert.strictEqual(api('commonLeads', { employee: 'sourabh' }).count, 1);
+    assert.strictEqual(api('commonLeads', { employee: 'AMIT' }).count, 2);
+    assert.strictEqual(api('commonLeads', { employee: 'nobody' }).count, 0);
+    assert.strictEqual(api('commonLeads', { employee: 'nobody' }).all, 2);
+    assert.strictEqual(api('repliesReport', {}).common, 2);
+    const x = api('commonExport', {}), lines = x.csv.split('\r\n');
+    assert.strictEqual(lines.length, 3); assert(/^Phone,Name,Status/.test(lines[0]));
+    assert(lines.some(l => l.indexOf('+919811112222,Ramesh') === 0 && /Rajat,Amit,Rajat \+ Amit/.test(l)), x.csv);
+    assert(/\.csv$/.test(x.filename));
+    // downloads of the report
+    const sm = api('repliesExport', { days: 0, what: 'summary' }).csv.split('\r\n');
+    assert(/^Employee,Leads/.test(sm[0])); assert(sm[sm.length - 1].indexOf('All,') === 0);
+    assert(/Real reply/.test(api('repliesExport', { days: 0, what: 'real' }).csv));
+    // teaching: a greeting that wording alone calls "real" can be taught as an automatic reply, and back
+    const greet = 'Namaste, aapka swagat hai ji';
+    post(env, payload([text('919811115555', greet)]));
+    const has = kind => api('repliesReport', { days: 0, kind }).messages.some(m => m.phone === '919811115555');
+    assert.strictEqual(has('real'), true); assert.strictEqual(has('auto'), false);
+    api('repliesTeach', { text: greet, as: 'auto' });
+    assert.strictEqual(has('real'), false); assert.strictEqual(has('auto'), true);
+    assert(/Automatic reply/.test(api('repliesExport', { days: 0, what: 'auto' }).csv));
+    api('repliesTeach', { text: greet, as: 'real' });
+    assert.strictEqual(has('real'), true); assert.strictEqual(has('auto'), false);
+    assert(api('repliesTeach', { text: 'x', as: 'auto' }).error);
+  },
   'app: dashboard, search, lead detail, actions, reply, settings'() {
     const env = load(Object.assign({}, BASE, { claude: [
       tool('handoff_to_sales', { reason: 'price', summary: 'Applicator Jaipur 2000 sqft', priority: 'hot' }), say('Ji 🙏 team call karegi')] }));

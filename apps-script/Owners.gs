@@ -278,23 +278,49 @@ var AUTO_REPLY_RE = new RegExp([
 
 function replyKey_(text) { return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 160); }
 
-/** What the customer wrote is "auto" (a likely auto-reply) or "real". Same long text from 3+ different numbers counts as auto too. */
-function replyKind_(text, sameFrom) {
+/** What the owner taught: {auto: [phrases], real: [phrases]}. A phrase is the start of a message (REPLY_RULES setting). */
+function replyRules_() {
+  var o = {};
+  try { o = JSON.parse(setting_('REPLY_RULES') || '{}') || {}; } catch (err) { o = {}; }
+  return { auto: o.auto instanceof Array ? o.auto : [], real: o.real instanceof Array ? o.real : [] };
+}
+
+/** "auto" (a likely auto-reply) or "real". Taught rules win; then wording; then the same long text from 3+ different numbers. */
+function replyKind_(text, sameFrom, rules) {
+  var key = replyKey_(text);
+  rules = rules || replyRules_();
+  var starts = function (list) { return list.some(function (ph) { return ph && key.indexOf(ph) === 0; }); };
+  if (starts(rules.real)) return 'real';
+  if (starts(rules.auto)) return 'auto';
   if (AUTO_REPLY_RE.test(String(text || ''))) return 'auto';
   return sameFrom >= 3 ? 'auto' : 'real';
 }
 
-/** Per employee: leads, messages sent, real customer replies, likely auto-replies, our bot's replies; plus the messages of one kind. */
-function repliesReport_(a) {
+/** Index of the first Messages row (0-based, from row 2) written at or after `since`; times are in the order they were appended. */
+function firstRowSince_(sh, last, since) {
+  if (!since || last < 2) return 0;
+  var times = sh.getRange(2, 1, last - 1, 1).getValues();
+  var i = times.length;
+  while (i > 0) {
+    var t = asDate_(times[i - 1][0]);
+    if (t && t < since) break;   // older than the period: everything before it is too
+    i--;
+  }
+  return i;
+}
+
+/** The numbers behind the report: per-employee counts, and every message of the wanted kind (newest first). */
+function repliesData_(a) {
   var days = Number(a.days) || 0, wantEmp = String(a.employee || '').toLowerCase().trim(), kind = a.kind === 'auto' ? 'auto' : 'real';
   var since = days ? new Date(Date.now() - days * 86400000) : null;
-  var owners = ownerMap_(), leads = allLeadsCached_(), byPhone = {};
+  var owners = ownerMap_(), leads = allLeadsCached_(), byPhone = {}, rules = replyRules_();
   var ownerName = function (phone) { var o = owners[normPhone_(phone)]; return o ? o.employee : 'Unassigned'; };
   var stats = {};
   var stat = function (name) {
     return stats[name] || (stats[name] = { name: name, leads: 0, hot: 0, optedOut: 0, sent: 0, real: 0, auto: 0, bot: 0, repliedLeads: {} });
   };
-  Object.keys(employees_()).forEach(function (k) { stat(employees_()[k].name); });
+  var emps = employees_();
+  Object.keys(emps).forEach(function (k) { stat(emps[k].name); });
   leads.forEach(function (l) {
     byPhone[String(l['Phone'])] = l;
     var s = stat(ownerName(l['Phone']));
@@ -303,8 +329,10 @@ function repliesReport_(a) {
     if (l['Status'] === 'Opted out') s.optedOut++;
   });
 
+  // read only the rows of the period (the sheet is in time order), not the whole history
   var sh = sheet_(SHEETS.messages), last = sh.getLastRow();
-  var rows = last < 2 ? [] : sh.getRange(2, 1, last - 1, 5).getValues();   // Time, Phone, Direction, Sender, Body
+  var from = firstRowSince_(sh, last, since);
+  var rows = last < 2 || from >= last - 1 ? [] : sh.getRange(2 + from, 1, last - 1 - from, 5).getValues();   // Time, Phone, Direction, Sender, Body
   var sameFrom = {};   // text -> how many different numbers sent it
   rows.forEach(function (r) {
     if (r[2] !== 'in' || r[3] !== 'lead') return;
@@ -325,9 +353,9 @@ function repliesReport_(a) {
       return;
     }
     if (r[2] !== 'in' || r[3] !== 'lead') return;
-    var k = replyKey_(r[4]), what = replyKind_(r[4], k.length >= 20 && sameFrom[k] ? sameFrom[k].n : 0);
+    var k = replyKey_(r[4]), what = replyKind_(r[4], k.length >= 20 && sameFrom[k] ? sameFrom[k].n : 0, rules);
     if (what === 'auto') s.auto++; else { s.real++; s.repliedLeads[phone] = 1; }
-    if (what === kind && (!wantEmp || s.name.toLowerCase() === wantEmp)) listed.push({ r: r, when: when, name: s.name });
+    if (what === kind && (!wantEmp || s.name.toLowerCase() === wantEmp)) listed.push({ r: r, when: when, name: s.name, kind: what });
   });
 
   var employees = Object.keys(stats).map(function (k) {
@@ -338,17 +366,119 @@ function repliesReport_(a) {
     .sort(function (x, y) { return y.real - x.real || y.leads - x.leads || x.name.localeCompare(y.name); });
   var total = { name: 'All', leads: 0, hot: 0, optedOut: 0, sent: 0, real: 0, auto: 0, bot: 0, repliedLeads: 0 };
   employees.forEach(function (e) { Object.keys(total).forEach(function (k) { if (k !== 'name') total[k] += e[k]; }); });
-
   listed.sort(function (x, y) { return (y.when || 0) - (x.when || 0); });
-  var messages = listed.slice(0, 60).map(function (x) {
-    var l = byPhone[String(x.r[1])] || {};
-    return { phone: String(x.r[1]), name: l['Name'] || l['Business'] || 'Lead', employee: x.name, time: iso_(x.when), text: String(x.r[4]).slice(0, 300) };
+  return { days: days, kind: kind, employees: employees, total: total, listed: listed, byPhone: byPhone };
+}
+
+function replyMessage_(x, byPhone, textMax) {
+  var l = byPhone[String(x.r[1])] || {};
+  return { phone: String(x.r[1]), name: l['Name'] || l['Business'] || 'Lead', employee: x.name, time: iso_(x.when), kind: x.kind,
+           text: String(x.r[4]).slice(0, textMax) };
+}
+
+/** The screen's data, kept for 2 minutes so tapping between chips is instant. A new message, a taught rule or a new period starts fresh. */
+function repliesReport_(a) {
+  var cache = null, key = '';
+  try {
+    cache = CacheService.getScriptCache();
+    key = 'rr_' + (cache.get('rr_ver') || '0') + '_' + sheet_(SHEETS.messages).getLastRow() + '_' + (Number(a.days) || 0) + '_' + String(a.employee || '').toLowerCase().slice(0, 40) + '_' + (a.kind === 'auto' ? 'a' : 'r');
+    var hit = cache.get(key);
+    if (hit) return JSON.parse(hit);
+  } catch (err) { cache = null; }
+  var d = repliesData_(a);
+  var out = { days: d.days, kind: d.kind, employees: d.employees, total: d.total, count: d.listed.length, common: commonLeadsData_({}).all,
+              messages: d.listed.slice(0, 60).map(function (x) { return replyMessage_(x, d.byPhone, 300); }) };
+  try { var txt = JSON.stringify(out); if (cache && txt.length < 90000) cache.put(key, txt, 120); } catch (err) { /* only a speed-up */ }
+  return out;
+}
+
+function csvCell_(v) { var t = String(v == null ? '' : v).replace(/\r?\n/g, ' '); return /[",]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; }
+function csvLine_(arr) { return arr.map(csvCell_).join(','); }
+
+/** A CSV to download: "summary" = one line per employee; "real" / "auto" = the messages (up to 20,000, newest first). */
+function repliesExport_(a) {
+  var what = a.what === 'summary' ? 'summary' : a.what === 'auto' ? 'auto' : 'real';
+  var d = repliesData_({ days: a.days, employee: a.employee, kind: what === 'auto' ? 'auto' : 'real' });
+  var label = (Number(a.days) ? 'last-' + Number(a.days) + '-days' : 'all-time');
+  var lines;
+  if (what === 'summary') {
+    lines = [csvLine_(['Employee', 'Leads', 'Hot leads', 'Opted out', 'Sent (campaign)', 'Real customer replies', 'Leads that replied', 'Automatic replies (customer WhatsApp)', 'Bot replies'])];
+    d.employees.concat([d.total]).forEach(function (e) {
+      lines.push(csvLine_([e.name, e.leads, e.hot, e.optedOut, e.sent, e.real, e.repliedLeads, e.auto, e.bot]));
+    });
+  } else {
+    lines = [csvLine_(['Time', 'Employee', 'Name', 'Phone', 'Type', 'Message'])];
+    d.listed.slice(0, 20000).forEach(function (x) {
+      var m = replyMessage_(x, d.byPhone, 1000);
+      lines.push(csvLine_([fmt_(x.when), m.employee, m.name, m.phone, what === 'auto' ? 'Automatic reply (customer WhatsApp)' : 'Real reply', m.text]));
+    });
+  }
+  return { filename: 'amitek-' + (what === 'summary' ? 'employee-summary' : what + '-replies') + '-' + label + '.csv', csv: lines.join('\r\n') };
+}
+
+/** Numbers that sit in the lists of two or more employees ("common leads"): who has each one, the lead's status, and a count per group of employees. */
+function commonLeadsData_(a) {
+  var want = String((a && a.employee) || '').toLowerCase().trim();
+  var map = ownerMap_(), byPhone = {};
+  allLeadsCached_().forEach(function (l) { byPhone[normPhone_(l['Phone'])] = l; });
+  var rows = [], groups = {}, all = 0;
+  Object.keys(map).forEach(function (p) {
+    var o = map[p];
+    if (!o.also) return;
+    all++;
+    var names = [o.employee].concat(String(o.also).split(/\s*,\s*/).filter(Boolean));
+    if (want && !names.some(function (n) { return n.toLowerCase() === want; })) return;
+    var l = byPhone[p] || null;
+    rows.push({ phone: p, name: l ? String(l['Name'] || l['Business'] || '') : '', status: l ? String(l['Status'] || '') : '', inLeads: !!l,
+                keeps: o.employee, employees: names, lastIn: l ? iso_(l['Last Inbound']) : '' });
+    var g = names.slice().sort(function (x, y) { return x.localeCompare(y); }).join(' + ');
+    groups[g] = (groups[g] || 0) + 1;
   });
-  return { days: days, kind: kind, employees: employees, total: total, count: listed.length, messages: messages };
+  rows.sort(function (x, y) { return String(y.lastIn || '').localeCompare(String(x.lastIn || '')) || x.phone.localeCompare(y.phone); });
+  var pairs = Object.keys(groups).map(function (k) { return { names: k, count: groups[k] }; })
+    .sort(function (x, y) { return y.count - x.count || x.names.localeCompare(y.names); });
+  return { all: all, count: rows.length, pairs: pairs, rows: rows };
+}
+
+function commonLeads_(a) {
+  var d = commonLeadsData_(a);
+  return { all: d.all, count: d.count, pairs: d.pairs.slice(0, 20), leads: d.rows.slice(0, 200) };
+}
+
+/** CSV of the common leads: one line per number, with every employee who has it. */
+function commonExport_(a) {
+  var d = commonLeadsData_(a), lines = [csvLine_(['Phone', 'Name', 'Status', 'Stays with', 'Also in the list of', 'All employees', 'Last wrote to us'])];
+  d.rows.forEach(function (r) {
+    lines.push(csvLine_(['+' + r.phone, r.name, r.status || (r.inLeads ? '' : 'Not in the lead list yet'), r.keeps, r.employees.slice(1).join(', '), r.employees.join(' + '), r.lastIn ? fmt_(asDate_(r.lastIn)) : '']));
+  });
+  return { filename: 'amitek-common-leads' + (a && a.employee ? '-' + String(a.employee).toLowerCase().replace(/[^a-z0-9]+/g, '-') : '') + '.csv', csv: lines.join('\r\n') };
+}
+
+/** Teach the filter: this kind of message is auto (or real) from now on. The phrase is the start of the message. */
+function repliesTeach_(a) {
+  var to = a.as === 'auto' ? 'auto' : a.as === 'real' ? 'real' : '';
+  var phrase = replyKey_(a.text).slice(0, 80);
+  if (!to || phrase.length < 3) return { error: 'Nothing to learn from this message' };
+  var other = to === 'auto' ? 'real' : 'auto', rules = replyRules_();
+  rules[other] = rules[other].filter(function (p) { return p !== phrase; });
+  if (rules[to].indexOf(phrase) < 0) rules[to].push(phrase);
+  if (rules[to].length > 150) rules[to] = rules[to].slice(-150);
+  var sh = sheet_(SHEETS.settings);
+  var names = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().map(function (r) { return r[0]; }) : [];
+  var i = names.indexOf('REPLY_RULES'), val = JSON.stringify(rules);
+  if (i >= 0) sh.getRange(i + 2, 2).setValue(val); else sh.appendRow(['REPLY_RULES', val, 'Taught in the app: messages starting like these are auto-replies or real replies']);
+  settingsCache_ = null;
+  logChange_('', 'app', 'Reply rule: "' + phrase + '" is ' + to);
+  try { CacheService.getScriptCache().put('rr_ver', String(Date.now()), 3600); } catch (err) { /* only a speed-up */ }
+  return { message: 'Learned: messages that start like this are now ' + (to === 'auto' ? 'auto-replies' : 'real replies') };
 }
 
 var OWNER_ACTIONS = {
   repliesReport: function (a) { return repliesReport_(a || {}); },
+  repliesExport: function (a) { return repliesExport_(a || {}); },
+  repliesTeach: function (a) { return repliesTeach_(a || {}); },
+  commonLeads: function (a) { return commonLeads_(a || {}); },
+  commonExport: function (a) { return commonExport_(a || {}); },
   ownersStatus: function () { return { employees: ownersOverview_() }; },
   /** Saves an employee (name + their own WhatsApp) and adds the pasted numbers to their list, in any format. */
   ownersSave: function (a) {
